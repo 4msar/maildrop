@@ -1,0 +1,29 @@
+From: Example Sender <sender@example.com>
+To: smoke-test@maildrop.msar.me
+Subject: Welcome to Maildrop
+Date: Sat, 10 Oct 2026 12:00:00 +0000
+Message-ID: <sample-0001@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+
+Hello! Your verification code is 482913.
+
+--alt
+Content-Type: text/html; charset=utf-8
+
+<html><body><h1 style="color:#0f766e">Hello!</h1><p>Your verification code is <b>482913</b>.</p><img src="https://example.com/track.gif" alt=""><script>alert('xss')</script><a href="https://example.com">Visit</a></body></html>
+
+--alt--
+--outer
+Content-Type: text/plain; name="notes.txt"
+Content-Disposition: attachment; filename="notes.txt"
+Content-Transfer-Encoding: base64
+
+VGhpcyBpcyBhbiBhdHRhY2htZW50Lg==
+--outer--

@@ -1,12 +1,20 @@
-export default {
-  fetch(request) {
-    const url = new URL(request.url);
+// Worker entry point: HTTP (Hono), inbound email, and the backup cleanup cron.
 
-    if (url.pathname.startsWith("/api/")) {
-      return Response.json({
-        name: "Cloudflare",
-      });
-    }
-		return new Response(null, { status: 404 });
+import { app } from "./app";
+import { handleEmail } from "./email";
+import { runCleanup } from "./scheduled";
+
+export { InboxDurableObject } from "./inbox";
+export { InboxRegistry } from "./registry";
+
+export default {
+  fetch: app.fetch,
+
+  async email(message, env, _ctx) {
+    await handleEmail(message, env);
+  },
+
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(runCleanup(env));
   },
 } satisfies ExportedHandler<Env>;
