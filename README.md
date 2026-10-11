@@ -1,13 +1,24 @@
 # Maildrop
 
-A disposable, public email inbox service on Cloudflare: React + Vite + Tailwind front end,
-Hono API on Workers, one SQLite-backed Durable Object per inbox, and inbound mail through an
-Email Routing catch-all rule. There is no database, bucket or third-party mail service: every
-inbox's state lives in its own Durable Object.
+Maildrop is a disposable, public email inbox service built on Cloudflare: open any address at
+`maildrop.msar.me` (or generate a random one) and read incoming mail instantly, with no signup.
+Each inbox lives in its own SQLite-backed Durable Object, receives mail through Email Routing
+(optionally creating a per-address rule automatically), and is deleted after 24 hours without
+a visit or whenever you delete it yourself. The React front end sanitizes and sandboxes HTML
+email, and it alerts you to new messages with an unread count in the tab title, a sound and
+optional browser notifications.
+
+**Source:** [github.com/4msar/maildrop](https://github.com/4msar/maildrop)
+
+Stack: React + Vite + Tailwind front end, Hono API on Workers, Durable Objects for storage.
+There is no database, bucket or third-party mail service: every inbox's state lives in its
+own Durable Object.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/4msar/maildrop)
 
 ```
                     ┌───────────────────────── Cloudflare ─────────────────────────┐
- SMTP sender ──MX──►│ Email Routing (catch-all → Worker)                           │
+ SMTP sender ──MX──►│ Email Routing (catch-all or per-address rules → Worker)      │
                     │        │                                                     │
                     │        ▼ email(message)                                      │
  Browser ──HTTPS───►│ Worker  ─ fetch: /api/* → Hono   ─┐                          │
@@ -17,7 +28,10 @@ inbox's state lives in its own Durable Object.
                     │                          SQLite: meta, messages, bodies,     │
                     │                                  raw_chunks + alarm          │
                     │                        InboxRegistry ×8 shards (cron index)  │
-                    └──────────────────────────────────────────────────────────────┘
+                    └───────────────┬──────────────────────────────────────────────┘
+                                    │ optional (ZONE_ID + CF_TOKEN)
+                                    ▼
+                    Cloudflare API: create / check / delete Email Routing rules
 ```
 
 ## Contents
@@ -46,28 +60,36 @@ maildrop/
 ├── shared/                     Code used by both the Worker and the browser
 │   ├── api-types.ts            API request/response types
 │   └── username.ts             Username validation, reserved names, recipient parsing
+├── .dev.vars.example           Optional secrets: ZONE_ID, CF_TOKEN, ADMIN_TOKEN
 ├── worker/
 │   ├── index.ts                Entry point: fetch, email, scheduled; exports DO classes
 │   ├── app.ts                  Hono routes, rate limiting, security headers
+│   ├── admin.ts                Manual cleanup (POST /api/admin/cleanup)
 │   ├── email.ts                Inbound mail handler (Email Routing → Durable Object)
-│   ├── inbox.ts                InboxDurableObject (storage schema, lifecycle, messages)
+│   ├── env.d.ts                Types for optional secrets not declared in wrangler.jsonc
+│   ├── inbox.ts                InboxDurableObject (storage, lifecycle, messages, routing rule)
 │   ├── registry.ts             InboxRegistry (sharded index for the backup cron)
 │   ├── scheduled.ts            Backup cleanup sweep
 │   └── lib/
 │       ├── config.ts           TTLs and size limits
 │       ├── ids.ts              Message id generation and validation
 │       ├── log.ts              Structured JSON logging (no message content)
-│       └── mime.ts             postal-mime parsing, truncation, attachment extraction
+│       ├── mime.ts             postal-mime parsing, truncation, attachment extraction
+│       └── routing.ts          Cloudflare API client for Email Routing rules
 ├── src/                        React app
 │   ├── App.tsx, main.tsx, index.css
-│   ├── hooks/useInbox.ts       Open, heartbeat, polling, expired state
-│   ├── lib/                    API client, tiny router, formatters
-│   └── components/             HomePage, InboxPage, MessageList, MessageView,
+│   ├── hooks/
+│   │   ├── useInbox.ts         Open, heartbeat, polling, routing status, delete
+│   │   └── useMailAlerts.ts    New-mail sound, notifications, unread count
+│   ├── lib/                    API client, router, formatters, chime, localStorage helpers
+│   └── components/             HomePage, InboxPage, MessageList, MessageView, RoutingBadge,
 │                               HtmlPreview (sanitized + sandboxed), CopyButton, …
 ├── test/
 │   ├── unit.test.ts            Usernames, ids, MIME helpers, sharding
 │   ├── lifecycle.test.ts       Heartbeats, concurrency, alarm expiry, cron
-│   ├── e2e.test.ts             Full API + email handler flows
+│   ├── e2e.test.ts             Full API + email handler flows, inbox deletion
+│   ├── routing.test.ts         Email Routing client (against a fake API)
+│   ├── admin.test.ts           Admin cleanup: auth, dry run, batching
 │   └── helpers.ts
 └── scripts/sample.eml          Sample message for local testing
 ```
@@ -78,31 +100,31 @@ maildrop/
 
 All routes are under `/api` and return `Cache-Control: no-store`.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/inboxes` | Create or open an inbox. Body `{"username": "hello"}`, or `{}` for a random name. Also creates the address's Email Routing rule when `ZONE_ID` and `CF_TOKEN` are set, and returns its state as `routing`. |
-| `GET` | `/api/inboxes/:username` | Inbox info (does **not** extend expiry). |
-| `DELETE` | `/api/inboxes/:username` | Delete the inbox now: messages, alarm, registry entry and its Email Routing rule. Mail to it bounces until it is opened again. |
-| `GET` | `/api/inboxes/:username/routing` | Email Routing rule state: `enabled`, `disabled`, `not_configured` or `unknown`. |
-| `POST` | `/api/inboxes/:username/heartbeat` | Extend expiry to now + 24 h. `404`/`410` if it doesn't exist or has expired. |
-| `GET` | `/api/inboxes/:username/messages` | List messages (newest first). |
-| `GET` | `/api/inboxes/:username/messages/:id` | Message detail: headers, text, HTML, attachment list. |
-| `GET` | `/api/inboxes/:username/messages/:id/raw` | Original `.eml` (always a download). |
-| `GET` | `/api/inboxes/:username/messages/:id/attachments/:index` | One attachment. `?inline=1` displays PNG/JPEG/GIF/WebP inline; all other types download. |
-| `DELETE` | `/api/inboxes/:username/messages/:id` | Delete a message. |
-| `POST` | `/api/admin/cleanup` | Admin only (`Authorization: Bearer $ADMIN_TOKEN`). Deletes every inbox and every literal routing rule for `MAIL_DOMAIN`. See [Manual cleanup](#manual-cleanup). |
-| `GET` | `/api/config`, `/api/health` | Mail domain and limits; liveness check. |
+| Method   | Path                                                     | Purpose                                                                                                                                                                                                    |
+| -------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST`   | `/api/inboxes`                                           | Create or open an inbox. Body `{"username": "hello"}`, or `{}` for a random name. Also creates the address's Email Routing rule when `ZONE_ID` and `CF_TOKEN` are set, and returns its state as `routing`. |
+| `GET`    | `/api/inboxes/:username`                                 | Inbox info (does **not** extend expiry).                                                                                                                                                                   |
+| `DELETE` | `/api/inboxes/:username`                                 | Delete the inbox now: messages, alarm, registry entry and its Email Routing rule. Mail to it bounces until it is opened again.                                                                             |
+| `GET`    | `/api/inboxes/:username/routing`                         | Email Routing rule state: `enabled`, `disabled`, `not_configured` or `unknown`.                                                                                                                            |
+| `POST`   | `/api/inboxes/:username/heartbeat`                       | Extend expiry to now + 24 h. `404`/`410` if it doesn't exist or has expired.                                                                                                                               |
+| `GET`    | `/api/inboxes/:username/messages`                        | List messages (newest first).                                                                                                                                                                              |
+| `GET`    | `/api/inboxes/:username/messages/:id`                    | Message detail: headers, text, HTML, attachment list.                                                                                                                                                      |
+| `GET`    | `/api/inboxes/:username/messages/:id/raw`                | Original `.eml` (always a download).                                                                                                                                                                       |
+| `GET`    | `/api/inboxes/:username/messages/:id/attachments/:index` | One attachment. `?inline=1` displays PNG/JPEG/GIF/WebP inline; all other types download.                                                                                                                   |
+| `DELETE` | `/api/inboxes/:username/messages/:id`                    | Delete a message.                                                                                                                                                                                          |
+| `POST`   | `/api/admin/cleanup`                                     | Admin only (`Authorization: Bearer $ADMIN_TOKEN`). Deletes every inbox and every literal routing rule for `MAIL_DOMAIN`. See [Manual cleanup](#manual-cleanup).                                            |
+| `GET`    | `/api/config`, `/api/health`                             | Mail domain and limits; liveness check.                                                                                                                                                                    |
 
 ### Durable Object storage schema
 
 Each inbox is `env.INBOX.getByName(username)`. Its private SQLite database holds:
 
-| Table | Contents |
-| --- | --- |
-| `meta` (1 row) | `username`, `created_at`, `last_ping`, `expires_at`, `message_count`, `total_bytes`, plus a fixed-window inbound rate counter |
-| `messages` | One row per message: envelope and header addresses, subject, preview, size, attachment metadata (JSON), a capped header list (JSON), flags for truncated or malformed content |
-| `bodies` | Parsed `text` and `html` bodies, one row each, capped at 1.5 MB |
-| `raw_chunks` | The original MIME message split into 1 MiB `BLOB` rows `(message_id, seq)` |
+| Table          | Contents                                                                                                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `meta` (1 row) | `username`, `created_at`, `last_ping`, `expires_at`, `message_count`, `total_bytes`, plus a fixed-window inbound rate counter                                                 |
+| `messages`     | One row per message: envelope and header addresses, subject, preview, size, attachment metadata (JSON), a capped header list (JSON), flags for truncated or malformed content |
+| `bodies`       | Parsed `text` and `html` bodies, one row each, capped at 1.5 MB                                                                                                               |
+| `raw_chunks`   | The original MIME message split into 1 MiB `BLOB` rows `(message_id, seq)`                                                                                                    |
 
 **Why this layout.** SQLite-backed Durable Objects cap each row, string or BLOB at **2 MB**,
 so the raw `.eml` is chunked at 1 MiB and every body is stored in its own row. Listing reads
@@ -181,14 +203,23 @@ doesn't become a hot spot. This covers alarms lost to bugs or exhausted retries.
 - One-click copy (Clipboard API with an `execCommand` fallback).
 - Polls every 8 s while the tab is visible and every 60 s while hidden; manual refresh button.
 - Loading skeletons, empty ("waiting for mail"), error-with-retry and expired states.
+- A badge shows the address's Email Routing rule: **Receiving enabled**, **Routing disabled**
+  or **Routing not configured**.
+- **Delete** (with an inline confirmation) removes the inbox, its messages and its routing
+  rule immediately.
+- New-mail alerts: the tab title shows the unread count (`(2) name@… · Maildrop`), unread
+  messages get a dot, a short chime plays (Web Audio, no file; toggle with the speaker
+  button), and optional desktop notifications (bell button) appear while the tab is in the
+  background. Messages already present when the page loads never alert. Read state and
+  alert preferences are kept in `localStorage`.
 - Plain text is rendered as React text (always escaped).
 - HTML goes through three layers:
-  1. DOMPurify strips scripts, handlers, forms, frames, SVG/MathML and `srcset`.
-  2. It renders in an `<iframe sandbox="allow-popups allow-popups-to-escape-sandbox">`, with
-     no scripts and no same-origin access.
-  3. A CSP inside the document blocks all network requests except `cid:` images, which are
-     rewritten to this origin's attachment URLs. Remote images and styles load only after
-     the user clicks **Load remote content**.
+    1. DOMPurify strips scripts, handlers, forms, frames, SVG/MathML and `srcset`.
+    2. It renders in an `<iframe sandbox="allow-popups allow-popups-to-escape-sandbox">`, with
+       no scripts and no same-origin access.
+    3. A CSP inside the document blocks all network requests except `cid:` images, which are
+       rewritten to this origin's attachment URLs. Remote images and styles load only after
+       the user clicks **Load remote content**.
 - Attachments are addressed by index only, never by a storage path. Only raster images are
   ever served inline. Everything else is `application/octet-stream` with
   `Content-Disposition: attachment`, `nosniff`, and `CSP: sandbox`.
@@ -249,7 +280,15 @@ Tests run inside the real Workers runtime through `@cloudflare/vitest-plugin`, w
   attachments) and deletes mail; checks that only images are served inline, `+tag` delivery,
   rejection of unknown, invalid, reserved and foreign recipients, oversized messages (declared
   and actual size), storage of malformed MIME, byte-exact reassembly of multi-chunk messages,
-  the quota, path traversal, cross-inbox reads and security headers.
+  the quota, path traversal, cross-inbox reads and security headers; deleting an inbox and
+  reopening it.
+- **Routing** (`routing.test.ts`): the Email Routing client against an in-memory fake of the
+  Cloudflare API (create, reuse an existing rule, pagination, delete, errors), and the
+  "not configured" path.
+- **Admin** (`admin.test.ts`): token checks, `limit` validation, dry run, batched wiping.
+
+`vitest.config.ts` blanks `ZONE_ID` and `CF_TOKEN`, so tests never call the real Cloudflare
+API even when `.dev.vars` holds real credentials.
 
 The browser UI is not covered by automated tests. It was checked manually against `npm run dev`.
 
@@ -261,11 +300,11 @@ The browser UI is not covered by automated tests. It was checked manually agains
 `maildrop.msar.me`, Cloudflare lets you add Email Routing, but only literal per-address rules
 (at most 200 per domain). That can't support arbitrary disposable addresses. Pick one of these:
 
-| Option | What you do | Trade-off |
-| --- | --- | --- |
-| **A. Use a dedicated apex domain** (recommended) | Register a cheap domain (for example `msar-mail.com`), add it as a zone, and set `MAIL_DOMAIN` to it. The UI can stay on `maildrop.msar.me`. | Costs a domain. Keeps disposable mail isolated from your main domain's reputation. |
-| **B. Use `msar.me` itself** | Set `MAIL_DOMAIN` to `msar.me` and point the apex catch-all at the Worker. | Every address at `msar.me` that has no explicit rule becomes a public inbox. Don't do this if you receive real mail at `msar.me`. |
-| **C. Make `maildrop.msar.me` its own zone** | Delegate the subdomain as a separate zone, so it becomes that zone's apex. | Needs subdomain zone support on your Cloudflare plan. Check with Cloudflare before relying on it. |
+| Option                                           | What you do                                                                                                                                  | Trade-off                                                                                                                         |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **A. Use a dedicated apex domain** (recommended) | Register a cheap domain (for example `msar-mail.com`), add it as a zone, and set `MAIL_DOMAIN` to it. The UI can stay on `maildrop.msar.me`. | Costs a domain. Keeps disposable mail isolated from your main domain's reputation.                                                |
+| **B. Use `msar.me` itself**                      | Set `MAIL_DOMAIN` to `msar.me` and point the apex catch-all at the Worker.                                                                   | Every address at `msar.me` that has no explicit rule becomes a public inbox. Don't do this if you receive real mail at `msar.me`. |
+| **C. Make `maildrop.msar.me` its own zone**      | Delegate the subdomain as a separate zone, so it becomes that zone's apex.                                                                   | Needs subdomain zone support on your Cloudflare plan. Check with Cloudflare before relying on it.                                 |
 
 Whichever you choose, set `vars.MAIL_DOMAIN` in `wrangler.jsonc`, and adjust or remove `routes`,
 which serves the UI on `maildrop.msar.me` as a Workers custom domain.
@@ -354,8 +393,9 @@ batch, and any `skipped` reserved addresses. Rules are only seen when `ZONE_ID` 
 Workers Observability is enabled (`observability.enabled`). Every log line is JSON with an
 `event` field. Useful ones are `email.stored`, `email.rejected` (with `reason`),
 `email.failed`, `email.malformed_mime`, `inbox.created`, `inbox.expired` (with `trigger`),
-`inbox.store_failed`, `cron.cleanup` (`checked`, `expired`, `failed`), `http.error` and
-`http.unhandled`. Logs carry ids, sizes, sender **domains** and error codes only, never
+`inbox.deleted`, `inbox.store_failed`, `cron.cleanup` (`checked`, `expired`, `failed`),
+`routing.rule_ready`, `routing.ensure_failed`, `routing.delete_failed`, `admin.cleanup`,
+`http.error` and `http.unhandled`. Logs carry ids, sizes, sender **domains** and error codes only, never
 subjects, bodies or full addresses. Rate limiter rejections are not shown in the dashboard,
 so alert on `429` responses in Workers Logs if you need that.
 
@@ -365,22 +405,22 @@ Figures were taken from Cloudflare's docs on 2026-10-11. Re-check them before re
 
 **Durable Objects (SQLite backend)**
 
-| Limit | Value |
-| --- | --- |
-| Max row / string / BLOB size | 2 MB (the reason for 1 MiB raw chunks) |
-| Storage per object | 10 GB (Paid) |
-| Storage per account | 5 GB (Free), unlimited (Paid) |
-| CPU per request | 30 s default (configurable up to 5 min) |
-| Requests per object | soft limit of about 1,000/s |
-| Alarms | one per object; at-least-once; 15-minute wall-time limit per invocation; up to 6 retries with backoff |
+| Limit                        | Value                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Max row / string / BLOB size | 2 MB (the reason for 1 MiB raw chunks)                                                                |
+| Storage per object           | 10 GB (Paid)                                                                                          |
+| Storage per account          | 5 GB (Free), unlimited (Paid)                                                                         |
+| CPU per request              | 30 s default (configurable up to 5 min)                                                               |
+| Requests per object          | soft limit of about 1,000/s                                                                           |
+| Alarms                       | one per object; at-least-once; 15-minute wall-time limit per invocation; up to 6 retries with backoff |
 
-| Pricing | Free | Paid |
-| --- | --- | --- |
-| Requests | 100,000/day | 1M/month included, then $0.15/M |
-| Duration | 13,000 GB-s/day | 400,000 GB-s/month, then $12.50/M GB-s |
-| Rows read | 5M/day | 25B/month, then $0.001/M |
-| Rows written | 100,000/day | 50M/month, then $1.00/M |
-| Stored data | 5 GB total | 5 GB-month, then $0.20/GB-month |
+| Pricing      | Free            | Paid                                   |
+| ------------ | --------------- | -------------------------------------- |
+| Requests     | 100,000/day     | 1M/month included, then $0.15/M        |
+| Duration     | 13,000 GB-s/day | 400,000 GB-s/month, then $12.50/M GB-s |
+| Rows read    | 5M/day          | 25B/month, then $0.001/M               |
+| Rows written | 100,000/day     | 50M/month, then $1.00/M                |
+| Stored data  | 5 GB total      | 5 GB-month, then $0.20/GB-month        |
 
 Every `setAlarm()` is billed as one row written, and each alarm invocation counts as a request.
 
@@ -431,6 +471,9 @@ and eventually consistent ("not an accurate accounting system").
 - **HTML email.** Sanitized, sandboxed, isolated by CSP, and with remote content blocked by
   default. "Load remote content" reveals the viewer's IP to the sender's tracking servers, as
   in any mail client.
+- **Secrets.** `CF_TOKEN` only needs Email Routing Rules › Edit on one zone and never leaves
+  the Worker. `POST /api/admin/cleanup` is disabled unless `ADMIN_TOKEN` is set, and the token
+  is compared in constant time. Use a long random value.
 - **Caching.** API responses are `no-store`. Hashed assets are cached as immutable, and
   `index.html` is `no-cache`.
 
@@ -440,16 +483,17 @@ The code is complete and tested. It runs inside the Workers runtime locally, and
 `wrangler deploy --dry-run` resolves every binding. It has not yet been deployed to a real
 account, and real SMTP delivery has not been tested. Before calling it production-ready:
 
-1. **Fix the mail-domain question** (above). With a catch-all on a subdomain, inbound mail
-   will not work.
+1. **Settle the mail-domain question** (above). A catch-all on a subdomain does not work;
+   either use an apex domain or enable per-address rules (step 3b), which cap open inboxes
+   at 200 per zone.
 2. Run a real deliverability test from Gmail and Outlook, including an attachment close to
    10 MiB, to confirm parse time stays within your plan's CPU limit.
 3. Decide on abuse handling: Turnstile, an abuse address, and a takedown procedure.
 4. Watch `cron.cleanup` for a few days. `expired` should stay near 0 because alarms do the
    work. A rising `failed` count means a real problem.
 5. Limits to know about at scale:
-   - The registry is split into 8 shards, and the cron visits up to 800 due inboxes per hour.
-     Raise `REGISTRY_SHARDS` or `CRON_BATCH_PER_SHARD` if `cron.cleanup` stays busy. This only
-     affects the backup path.
-   - Polling could be replaced with WebSocket hibernation to cut request costs.
-   - Attachments are re-parsed from the raw message on every download.
+    - The registry is split into 8 shards, and the cron visits up to 800 due inboxes per hour.
+      Raise `REGISTRY_SHARDS` or `CRON_BATCH_PER_SHARD` if `cron.cleanup` stays busy. This only
+      affects the backup path.
+    - Polling could be replaced with WebSocket hibernation to cut request costs.
+    - Attachments are re-parsed from the raw message on every download.

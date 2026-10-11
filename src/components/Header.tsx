@@ -1,5 +1,5 @@
 import { navigate } from "../lib/router";
-import { MailIcon } from "./icons";
+import { GitHubIcon, MailIcon } from "./icons";
 
 export function Header() {
   return (
@@ -18,9 +18,22 @@ export function Header() {
           </span>
           maildrop
         </a>
-        <span className="hidden text-xs text-slate-500 sm:block dark:text-slate-400">
-          Public, disposable inboxes. No signup.
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs text-slate-500 sm:block dark:text-slate-400">
+            Public, disposable inboxes. No signup.
+          </span>
+          <a
+            href="https://github.com/4msar/maildrop"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Maildrop source code on GitHub"
+            title="View source on GitHub"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+          >
+            <GitHubIcon className="size-4" />
+            GitHub
+          </a>
+        </div>
       </div>
     </header>
   );
