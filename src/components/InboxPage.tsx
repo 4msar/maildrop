@@ -154,7 +154,7 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
   useEffect(() => {
     document.title = `${unreadCount > 0 ? `(${unreadCount}) ` : ""}${address} · Maildrop`;
     return () => {
-      document.title = "Maildrop";
+      document.title = "Maildrop · Disposable email, instantly";
     };
   }, [address, unreadCount]);
 
