@@ -137,6 +137,13 @@ app.post("/inboxes/:username/heartbeat", async (c) => {
   return res.ok ? c.json({ inbox: res.inbox }) : failFromInbox(c, res.reason);
 });
 
+/** Delete the inbox, its messages and its Email Routing rule. */
+app.delete("/inboxes/:username", async (c) => {
+  const username = c.get("username");
+  const res = await c.env.INBOX.getByName(username).deleteInbox(username);
+  return res.ok ? c.json({ deleted: true }) : failFromInbox(c, res.reason);
+});
+
 app.get("/inboxes/:username/routing", async (c) => {
   const username = c.get("username");
   const res = await c.env.INBOX.getByName(username).routingStatus(username);

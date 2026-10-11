@@ -82,6 +82,7 @@ All routes are under `/api` and return `Cache-Control: no-store`.
 | --- | --- | --- |
 | `POST` | `/api/inboxes` | Create or open an inbox. Body `{"username": "hello"}`, or `{}` for a random name. Also creates the address's Email Routing rule when `ZONE_ID` and `CF_TOKEN` are set, and returns its state as `routing`. |
 | `GET` | `/api/inboxes/:username` | Inbox info (does **not** extend expiry). |
+| `DELETE` | `/api/inboxes/:username` | Delete the inbox now: messages, alarm, registry entry and its Email Routing rule. Mail to it bounces until it is opened again. |
 | `GET` | `/api/inboxes/:username/routing` | Email Routing rule state: `enabled`, `disabled`, `not_configured` or `unknown`. |
 | `POST` | `/api/inboxes/:username/heartbeat` | Extend expiry to now + 24 h. `404`/`410` if it doesn't exist or has expired. |
 | `GET` | `/api/inboxes/:username/messages` | List messages (newest first). |
@@ -148,7 +149,9 @@ opened is rejected without creating any storage.
   if the alarm is late.
 - **Email never extends lifetime.** `receiveEmail` doesn't touch `expiresAt`, and it rejects mail
   for expired or missing inboxes rather than recreating them.
-- **Reopening** an expired address with `POST /api/inboxes` creates a fresh, empty inbox.
+- **Deleting.** The inbox page has a **Delete** button (with confirmation) that purges the inbox
+  immediately, the same way expiry does.
+- **Reopening** an expired or deleted address with `POST /api/inboxes` creates a fresh, empty inbox.
 
 **Concurrency.** A Durable Object runs one event at a time, and every SQL call here is
 synchronous, so heartbeats, deliveries, alarms and cron calls on the same inbox are fully

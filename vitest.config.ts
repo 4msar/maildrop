@@ -14,6 +14,9 @@ export default defineConfig({
         bindings: {
           MAX_MESSAGE_BYTES: "1048576",
           MAX_MESSAGES_PER_INBOX: "5",
+          // Never call the real Cloudflare API from tests, even when .dev.vars has credentials.
+          ZONE_ID: "",
+          CF_TOKEN: "",
         },
       },
     }),

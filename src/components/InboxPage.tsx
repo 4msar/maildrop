@@ -4,10 +4,79 @@ import { useInbox } from "../hooks/useInbox";
 import { formatDuration, formatRelative } from "../lib/format";
 import { navigate } from "../lib/router";
 import { CopyButton } from "./CopyButton";
-import { ClockIcon, RefreshIcon } from "./icons";
+import { ClockIcon, RefreshIcon, TrashIcon } from "./icons";
 import { MessageList } from "./MessageList";
 import { MessageView } from "./MessageView";
 import { RoutingBadge } from "./RoutingBadge";
+
+function DeleteInboxConfirm({
+  address,
+  messageCount,
+  onCancel,
+  onConfirm,
+}: {
+  address: string;
+  messageCount: number;
+  onCancel: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete this inbox.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      role="alertdialog"
+      aria-labelledby="delete-inbox-title"
+      aria-describedby="delete-inbox-desc"
+      className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/30"
+    >
+      <p id="delete-inbox-title" className="text-sm font-semibold text-red-800 dark:text-red-200">
+        Delete this inbox?
+      </p>
+      <p id="delete-inbox-desc" className="mt-1 text-sm text-red-700 dark:text-red-300">
+        <span className="font-medium break-all">{address}</span>
+        {messageCount > 0 ? ` and its ${messageCount} message${messageCount === 1 ? "" : "s"}` : ""} will be
+        removed permanently, and new mail to it will bounce. Anyone can open this address again later as an empty
+        inbox.
+      </p>
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </p>
+      )}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={busy}
+          className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+        >
+          {busy ? "Deleting…" : "Delete inbox"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          autoFocus
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function useNow(intervalMs: number) {
   const [now, setNow] = useState(Date.now);
@@ -67,6 +136,7 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
     window.history.replaceState(null, "", url);
   };
   const now = useNow(30_000);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const address = inbox.inbox?.address ?? `${username}@${domain}`;
 
   useEffect(() => {
@@ -126,8 +196,30 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
             <button type="button" onClick={() => navigate("/")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
               New address
             </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={!inbox.inbox || confirmingDelete}
+              aria-label="Delete inbox"
+              title="Delete inbox"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-slate-700 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              <TrashIcon className="size-4" />
+              <span className="hidden sm:inline">Delete</span>
+            </button>
           </div>
         </div>
+        {confirmingDelete && (
+          <DeleteInboxConfirm
+            address={address}
+            messageCount={inbox.messages.length}
+            onCancel={() => setConfirmingDelete(false)}
+            onConfirm={async () => {
+              await inbox.deleteInbox();
+              navigate("/");
+            }}
+          />
+        )}
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
           <ClockIcon className="mr-1.5 inline size-3.5 align-[-2px]" />
           {expiresIn !== null

@@ -149,5 +149,17 @@ export function useInbox(username: string) {
     setState((s) => ({ ...s, messages: s.messages.filter((m) => m.id !== id) }));
   }, []);
 
-  return { ...state, refresh, removeMessage, onGone: markExpired };
+  /** Deletes the inbox on the server. Polling and heartbeats stop first so they cannot race it. */
+  const deleteInbox = useCallback(async () => {
+    alive.current = false;
+    try {
+      await api.deleteInbox(username);
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.isGone) return; // Already gone: same outcome.
+      alive.current = true;
+      throw err;
+    }
+  }, [username]);
+
+  return { ...state, refresh, removeMessage, deleteInbox, onGone: markExpired };
 }

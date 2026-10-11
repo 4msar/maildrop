@@ -50,6 +50,8 @@ export const api = {
   heartbeat: (username: string) =>
     request<{ inbox: InboxInfo }>(`${inboxPath(username)}/heartbeat`, { method: "POST" }),
 
+  deleteInbox: (username: string) => request<{ deleted: true }>(inboxPath(username), { method: "DELETE" }),
+
   routingStatus: (username: string) => request<{ routing: RoutingStatus }>(`${inboxPath(username)}/routing`),
 
   listMessages: (username: string) =>

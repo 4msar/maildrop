@@ -287,6 +287,17 @@ export class InboxDurableObject extends DurableObject<Env> {
         return { ok: true, routing: await this.routingInFlight };
     }
 
+    /**
+     * Deletes the inbox right away: metadata, messages, alarm, registry entry and its Email
+     * Routing rule. Mail to the address is rejected afterwards until it is opened again.
+     */
+    async deleteInbox(username: string): Promise<Result<{ deleted: true }>> {
+        const check = await this.checkActive(username);
+        if (!check.ok) return check;
+        await this.purge("user", true);
+        return { ok: true, deleted: true };
+    }
+
     /** Current state of this inbox's routing rule, read from the Cloudflare API. */
     async routingStatus(
         username: string,
@@ -569,19 +580,23 @@ export class InboxDurableObject extends DurableObject<Env> {
         return this.purge(trigger);
     }
 
-    private async purge(trigger: string): Promise<boolean> {
+    /**
+     * Deletes the inbox. Unless `force` is set (an explicit delete by the user), it only runs
+     * when the inbox is past expiry.
+     */
+    private async purge(trigger: string, force = false): Promise<boolean> {
         let username: string | null = null;
         let ruleId: string | undefined;
         await this.ctx.blockConcurrencyWhile(async () => {
             // Re-check under exclusive access: a heartbeat processed earlier wins.
             const meta = this.readMeta();
-            if (!meta || Date.now() < meta.expires_at) return;
+            if (!meta || (!force && Date.now() < meta.expires_at)) return;
             username = meta.username;
             ruleId = await this.ctx.storage.get<string>(ROUTING_RULE_KEY);
             await this.ctx.storage.deleteAlarm();
             await this.ctx.storage.deleteAll();
             this.schemaReady = false;
-            log("info", "inbox.expired", {
+            log("info", force ? "inbox.deleted" : "inbox.expired", {
                 trigger,
                 messages: meta.message_count,
                 bytes: meta.total_bytes,

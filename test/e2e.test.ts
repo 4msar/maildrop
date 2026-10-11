@@ -192,3 +192,34 @@ describe("access control and path handling", () => {
     expect(await res.json()).toMatchObject({ error: "not_found" });
   });
 });
+
+describe("inbox deletion", () => {
+  it("deletes the inbox and its messages, then rejects mail to it", async () => {
+    await createInbox("to-delete");
+    expect((await deliver(addr("to-delete"), buildEmail({ to: addr("to-delete") }))).rejected).toBeNull();
+
+    const res = await api("/api/inboxes/to-delete", { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+
+    expect((await api("/api/inboxes/to-delete/messages")).status).toBe(404);
+    expect((await api("/api/inboxes/to-delete/heartbeat", { method: "POST" })).status).toBe(404);
+    expect((await deliver(addr("to-delete"), buildEmail({ to: addr("to-delete") }))).rejected).not.toBeNull();
+  });
+
+  it("can be reopened afterwards as a fresh, empty inbox", async () => {
+    await createInbox("reopen-me");
+    await deliver(addr("reopen-me"), buildEmail({ to: addr("reopen-me") }));
+    await api("/api/inboxes/reopen-me", { method: "DELETE" });
+
+    const { body } = await createInbox("reopen-me");
+    expect(body.inbox.messageCount).toBe(0);
+    const list = (await (await api("/api/inboxes/reopen-me/messages")).json()) as any;
+    expect(list.messages).toEqual([]);
+  });
+
+  it("returns 404 for unknown inboxes and 400 for invalid names", async () => {
+    expect((await api("/api/inboxes/never-existed", { method: "DELETE" })).status).toBe(404);
+    expect((await api("/api/inboxes/a..b", { method: "DELETE" })).status).toBe(400);
+  });
+});
