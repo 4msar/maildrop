@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { checkUsername } from "../../shared/username";
 import { useInbox } from "../hooks/useInbox";
+import { useMailAlerts } from "../hooks/useMailAlerts";
 import { formatDuration, formatRelative } from "../lib/format";
 import { navigate } from "../lib/router";
 import { CopyButton } from "./CopyButton";
-import { ClockIcon, RefreshIcon, TrashIcon } from "./icons";
+import { BellIcon, BellOffIcon, ClockIcon, RefreshIcon, TrashIcon, VolumeIcon, VolumeOffIcon } from "./icons";
 import { MessageList } from "./MessageList";
 import { MessageView } from "./MessageView";
 import { RoutingBadge } from "./RoutingBadge";
@@ -138,13 +139,24 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
   const now = useNow(30_000);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const address = inbox.inbox?.address ?? `${username}@${domain}`;
+  const alerts = useMailAlerts({
+    username,
+    messages: inbox.messages,
+    ready: inbox.status === "ready",
+    onOpenMessage: setSelectedId,
+  });
+  const { markRead, unreadCount } = alerts;
 
   useEffect(() => {
-    document.title = `${address} · Maildrop`;
+    if (selectedId) markRead(selectedId);
+  }, [selectedId, markRead]);
+
+  useEffect(() => {
+    document.title = `${unreadCount > 0 ? `(${unreadCount}) ` : ""}${address} · Maildrop`;
     return () => {
       document.title = "Maildrop";
     };
-  }, [address]);
+  }, [address, unreadCount]);
 
   if (inbox.status === "expired") {
     return (
@@ -241,7 +253,42 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
             <h2 className="text-sm font-semibold">
               Inbox{" "}
               {inbox.messages.length > 0 && <span className="text-slate-500">({inbox.messages.length})</span>}
+              {unreadCount > 0 && (
+                <span className="ml-1.5 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  {unreadCount} new
+                </span>
+              )}
             </h2>
+            <div className="flex items-center gap-0.5">
+              {alerts.permission !== "unsupported" && (
+                <button
+                  type="button"
+                  onClick={() => void alerts.toggleNotify()}
+                  disabled={alerts.permission === "denied"}
+                  aria-pressed={alerts.notify}
+                  aria-label={alerts.notify ? "Turn off desktop notifications" : "Turn on desktop notifications"}
+                  title={
+                    alerts.permission === "denied"
+                      ? "Notifications are blocked for this site in your browser settings"
+                      : alerts.notify
+                        ? "Desktop notifications on"
+                        : "Notify me about new mail"
+                  }
+                  className={`rounded-md p-1.5 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800 ${alerts.notify ? "text-brand-600" : "text-slate-500"}`}
+                >
+                  {alerts.notify ? <BellIcon className="size-3.5" /> : <BellOffIcon className="size-3.5" />}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={alerts.toggleSound}
+                aria-pressed={alerts.sound}
+                aria-label={alerts.sound ? "Mute new mail sound" : "Play a sound for new mail"}
+                title={alerts.sound ? "Sound on" : "Sound off"}
+                className={`rounded-md p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 ${alerts.sound ? "text-brand-600" : "text-slate-500"}`}
+              >
+                {alerts.sound ? <VolumeIcon className="size-3.5" /> : <VolumeOffIcon className="size-3.5" />}
+              </button>
             <button
               type="button"
               onClick={() => void inbox.refresh()}
@@ -251,6 +298,7 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
               <RefreshIcon className={`size-3.5 ${inbox.refreshing ? "animate-spin" : ""}`} />
               Refresh
             </button>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {inbox.status === "loading" ? (
@@ -263,7 +311,7 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
                 ))}
               </ul>
             ) : (
-              <MessageList messages={inbox.messages} selectedId={selectedId} onSelect={setSelectedId} now={now} />
+              <MessageList messages={inbox.messages} unreadIds={alerts.unreadIds} selectedId={selectedId} onSelect={setSelectedId} now={now} />
             )}
           </div>
         </section>
