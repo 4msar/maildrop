@@ -36,7 +36,7 @@
 
     // Backup sweep for expired inboxes (alarms are the primary mechanism).
     "triggers": {
-        "crons": ["17 * * * *"],
+        "crons": ["*/30 * * * *"],
     },
 
     // Per-client-IP limits. namespace_id must be unique within your Cloudflare account.
