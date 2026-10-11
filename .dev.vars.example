@@ -6,3 +6,6 @@ ZONE_ID=
 CF_TOKEN=
 # Worker that the rules send mail to (defaults to "maildrop").
 # EMAIL_WORKER_NAME=maildrop
+# Enables POST /api/admin/cleanup (deletes all inboxes and their routing rules).
+# Use a long random value, e.g. `openssl rand -hex 32`. The route returns 404 when unset.
+# ADMIN_TOKEN=

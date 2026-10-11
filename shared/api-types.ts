@@ -53,6 +53,7 @@ export type ApiErrorCode =
   | "not_found"
   | "inbox_expired"
   | "rate_limited"
+  | "unauthorized"
   | "bad_request"
   | "internal_error";
 

@@ -17,6 +17,7 @@ export default defineConfig({
           // Never call the real Cloudflare API from tests, even when .dev.vars has credentials.
           ZONE_ID: "",
           CF_TOKEN: "",
+          ADMIN_TOKEN: "test-admin-token",
         },
       },
     }),

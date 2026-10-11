@@ -298,6 +298,20 @@ export class InboxDurableObject extends DurableObject<Env> {
         return { ok: true, deleted: true };
     }
 
+    /**
+     * Admin cleanup: deletes everything this object holds, whatever its state (active,
+     * expired, or only a leftover routing rule id). Returns whether an inbox existed.
+     */
+    async wipe(): Promise<{ existed: boolean }> {
+        const existed = this.readMeta() !== null;
+        if (existed) await this.purge("admin", true);
+        // Covers storage that purge() leaves alone, e.g. a rule id without inbox metadata.
+        await this.ctx.storage.deleteAlarm();
+        await this.ctx.storage.deleteAll();
+        this.schemaReady = false;
+        return { existed };
+    }
+
     /** Current state of this inbox's routing rule, read from the Cloudflare API. */
     async routingStatus(
         username: string,

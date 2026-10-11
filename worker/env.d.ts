@@ -8,4 +8,6 @@ interface Env {
   CF_TOKEN?: string;
   /** Worker that routing rules send mail to. Defaults to "maildrop". */
   EMAIL_WORKER_NAME?: string;
+  /** Bearer token for POST /api/admin/cleanup. The route is disabled (404) when unset. */
+  ADMIN_TOKEN?: string;
 }

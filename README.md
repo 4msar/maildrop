@@ -90,6 +90,7 @@ All routes are under `/api` and return `Cache-Control: no-store`.
 | `GET` | `/api/inboxes/:username/messages/:id/raw` | Original `.eml` (always a download). |
 | `GET` | `/api/inboxes/:username/messages/:id/attachments/:index` | One attachment. `?inline=1` displays PNG/JPEG/GIF/WebP inline; all other types download. |
 | `DELETE` | `/api/inboxes/:username/messages/:id` | Delete a message. |
+| `POST` | `/api/admin/cleanup` | Admin only (`Authorization: Bearer $ADMIN_TOKEN`). Deletes every inbox and every literal routing rule for `MAIL_DOMAIN`. See [Manual cleanup](#manual-cleanup). |
 | `GET` | `/api/config`, `/api/health` | Mail domain and limits; liveness check. |
 
 ### Durable Object storage schema
@@ -323,6 +324,30 @@ curl https://maildrop.msar.me/api/health
 Open an inbox in the browser, send it an email from any provider, and watch it arrive.
 Use `npx wrangler tail` or **Workers & Pages › maildrop › Logs** to see `email.stored` and
 `email.rejected` events.
+
+### Manual cleanup
+
+`POST /api/admin/cleanup` deletes every literal Email Routing rule for an address at
+`MAIL_DOMAIN`, plus every inbox: all inboxes in the registry and any inbox a rule names. Rules
+for reserved names such as `postmaster@` and `abuse@`, and the catch-all, are left alone. The
+route is off (`404`) until you set a token:
+
+```bash
+npx wrangler secret put ADMIN_TOKEN   # e.g. the output of `openssl rand -hex 32`
+```
+
+Preview first, then run it. Each call handles at most `limit` rules and inboxes (default 40,
+max 500) to stay under the Workers subrequest limit, so repeat it until the response says
+`"done": true`:
+
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "https://maildrop.msar.me/api/admin/cleanup?dry_run=1"
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "https://maildrop.msar.me/api/admin/cleanup"
+```
+
+The response lists the counts found, deleted and failed, the addresses and usernames in this
+batch, and any `skipped` reserved addresses. Rules are only seen when `ZONE_ID` and
+`CF_TOKEN` are set (`routingConfigured`).
 
 ### Monitoring
 

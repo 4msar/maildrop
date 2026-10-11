@@ -10,6 +10,7 @@ import { errorFields, log } from "./lib/log";
 import { extractAttachment } from "./lib/mime";
 import { checkUsername, randomUsername } from "../shared/username";
 import type { InboxFailure } from "./inbox";
+import { runAdminCleanup } from "./admin";
 
 type AppEnv = { Bindings: Env; Variables: { username: string } };
 
@@ -17,7 +18,7 @@ export const app = new Hono<AppEnv>().basePath("/api");
 
 const INLINE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
-function fail(c: Context<AppEnv>, status: 400 | 404 | 410 | 413 | 429 | 500, error: ApiErrorCode, message: string) {
+function fail(c: Context<AppEnv>, status: 400 | 401 | 404 | 410 | 413 | 429 | 500, error: ApiErrorCode, message: string) {
   return c.json<ApiError>({ error, message }, status);
 }
 
@@ -170,6 +171,42 @@ app.delete("/inboxes/:username/messages/:id", async (c) => {
   if (!isValidMessageId(id)) return fail(c, 400, "invalid_message_id", "Invalid message id.");
   const res = await c.env.INBOX.getByName(username).deleteEmail(username, id);
   return res.ok ? c.json({ deleted: true }) : failFromInbox(c, res.reason);
+});
+
+/** Constant-time comparison, so the admin token cannot be guessed byte by byte. */
+async function tokenMatches(given: string, expected: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(given)),
+    crypto.subtle.digest("SHA-256", enc.encode(expected)),
+  ]);
+  return crypto.subtle.timingSafeEqual(a, b);
+}
+
+/**
+ * Admin: delete every inbox and every literal routing rule for MAIL_DOMAIN.
+ * Requires `Authorization: Bearer <ADMIN_TOKEN>`; returns 404 when ADMIN_TOKEN is unset.
+ * `?dry_run=1` only reports what would be deleted. `?limit=N` (1-500, default 40) caps the
+ * rules and inboxes handled per call; repeat until the response has `"done": true`.
+ */
+app.post("/admin/cleanup", async (c) => {
+  const expected = c.env.ADMIN_TOKEN?.trim();
+  if (!expected) return fail(c, 404, "not_found", "Not found.");
+  const given = c.req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
+  if (!(await tokenMatches(given, expected))) return fail(c, 401, "unauthorized", "Invalid admin token.");
+
+  const limitParam = c.req.query("limit");
+  const limit = limitParam === undefined ? 40 : Number(limitParam);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    return fail(c, 400, "bad_request", "limit must be an integer from 1 to 500.");
+  }
+  const dryRun = ["1", "true"].includes(c.req.query("dry_run") ?? "");
+  try {
+    return c.json(await runAdminCleanup(c.env, { dryRun, limit }));
+  } catch (err) {
+    log("error", "admin.cleanup_failed", errorFields(err));
+    return fail(c, 500, "internal_error", err instanceof Error ? err.message : "Cleanup failed.");
+  }
 });
 
 /** Download the original message as .eml. Always served as a download, never rendered. */

@@ -138,12 +138,11 @@ export async function getRule(
     }
 }
 
-/** Finds an existing literal rule for this address (e.g. left behind by a failed cleanup). */
-export async function findRule(
+/** Yields every rule in the zone, one API page at a time. */
+async function* listRules(
     cfg: RoutingConfig,
-    address: string,
     fetcher?: Fetcher,
-): Promise<RoutingRule | null> {
+): AsyncGenerator<ApiRule> {
     for (let page = 1; page <= MAX_PAGES; page++) {
         const { result, result_info } = await call<ApiRule[]>(
             cfg,
@@ -151,8 +150,7 @@ export async function findRule(
             {},
             fetcher,
         );
-        const match = result.find((r) => matchesAddress(r, address));
-        if (match) return toRule(match);
+        yield* result;
         const total = result_info?.total_count;
         if (
             result.length < PAGE_SIZE ||
@@ -160,7 +158,41 @@ export async function findRule(
         )
             break;
     }
+}
+
+/** Finds an existing literal rule for this address (e.g. left behind by a failed cleanup). */
+export async function findRule(
+    cfg: RoutingConfig,
+    address: string,
+    fetcher?: Fetcher,
+): Promise<RoutingRule | null> {
+    for await (const r of listRules(cfg, fetcher)) {
+        if (matchesAddress(r, address)) return toRule(r);
+    }
     return null;
+}
+
+/** Every rule with a literal "to" matcher for an address at `domain` (the catch-all is excluded). */
+export async function listDomainRules(
+    cfg: RoutingConfig,
+    domain: string,
+    fetcher?: Fetcher,
+): Promise<Array<RoutingRule & { address: string }>> {
+    const suffix = `@${domain.toLowerCase()}`;
+    const out: Array<RoutingRule & { address: string }> = [];
+    for await (const r of listRules(cfg, fetcher)) {
+        const rule = toRule(r);
+        const address = (r.matchers ?? [])
+            .find(
+                (m) =>
+                    m.type === "literal" &&
+                    m.field === "to" &&
+                    m.value?.toLowerCase().endsWith(suffix),
+            )
+            ?.value?.toLowerCase();
+        if (rule && address) out.push({ ...rule, address });
+    }
+    return out;
 }
 
 /** Returns the rule that sends `address` to the Worker, creating it when missing. */

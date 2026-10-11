@@ -55,6 +55,18 @@ export class InboxRegistry extends DurableObject<Env> {
       .map((r) => r.username);
   }
 
+  /** Usernames in name order, starting after `after`. Used by the admin cleanup. */
+  list(after: string, limit: number): string[] {
+    return this.ctx.storage.sql
+      .exec<{ username: string }>(
+        `SELECT username FROM inboxes WHERE username > ? ORDER BY username LIMIT ?`,
+        after,
+        limit,
+      )
+      .toArray()
+      .map((r) => r.username);
+  }
+
   count(): number {
     return this.ctx.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM inboxes`).one().n;
   }
