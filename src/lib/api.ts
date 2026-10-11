@@ -1,4 +1,4 @@
-import type { ApiError, ConfigResponse, InboxInfo, MessageDetail, MessageSummary } from "../../shared/api-types";
+import type { ApiError, ConfigResponse, InboxInfo, MessageDetail, MessageSummary, RoutingStatus } from "../../shared/api-types";
 
 export class ApiRequestError extends Error {
   readonly status: number;
@@ -41,7 +41,7 @@ export const api = {
   config: () => request<ConfigResponse>("/api/config"),
 
   openInbox: (username?: string) =>
-    request<{ inbox: InboxInfo }>("/api/inboxes", {
+    request<{ inbox: InboxInfo; routing: RoutingStatus }>("/api/inboxes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(username ? { username } : {}),
@@ -49,6 +49,8 @@ export const api = {
 
   heartbeat: (username: string) =>
     request<{ inbox: InboxInfo }>(`${inboxPath(username)}/heartbeat`, { method: "POST" }),
+
+  routingStatus: (username: string) => request<{ routing: RoutingStatus }>(`${inboxPath(username)}/routing`),
 
   listMessages: (username: string) =>
     request<{ inbox: InboxInfo; messages: MessageSummary[] }>(`${inboxPath(username)}/messages`),

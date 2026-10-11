@@ -80,8 +80,9 @@ All routes are under `/api` and return `Cache-Control: no-store`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/inboxes` | Create or open an inbox. Body `{"username": "hello"}`, or `{}` for a random name. |
+| `POST` | `/api/inboxes` | Create or open an inbox. Body `{"username": "hello"}`, or `{}` for a random name. Also creates the address's Email Routing rule when `ZONE_ID` and `CF_TOKEN` are set, and returns its state as `routing`. |
 | `GET` | `/api/inboxes/:username` | Inbox info (does **not** extend expiry). |
+| `GET` | `/api/inboxes/:username/routing` | Email Routing rule state: `enabled`, `disabled`, `not_configured` or `unknown`. |
 | `POST` | `/api/inboxes/:username/heartbeat` | Extend expiry to now + 24 h. `404`/`410` if it doesn't exist or has expired. |
 | `GET` | `/api/inboxes/:username/messages` | List messages (newest first). |
 | `GET` | `/api/inboxes/:username/messages/:id` | Message detail: headers, text, HTML, attachment list. |
@@ -292,6 +293,23 @@ In the Cloudflare dashboard, select the mail domain's zone:
 3. Optionally add literal rules that forward `postmaster@` and `abuse@` to a real mailbox. The
    Worker rejects those names because they are reserved, and literal rules take priority over
    the catch-all.
+
+### 3b. Optional: per-address routing rules (needed on a subdomain)
+
+Instead of a catch-all, the Worker can create one literal rule per inbox. Set two secrets:
+
+```bash
+npx wrangler secret put ZONE_ID    # zone id of the mail domain
+npx wrangler secret put CF_TOKEN   # API token with Zone › Email Routing Rules › Edit
+```
+
+When both are set, `POST /api/inboxes` finds or creates a rule `<name>@MAIL_DOMAIN → Send to
+Worker` (worker name from `EMAIL_WORKER_NAME`, default `maildrop`), and the rule is deleted
+when the inbox expires. When either is missing, inboxes are simply opened and mail relies on
+the catch-all. A failed API call never blocks opening an inbox. The inbox page shows a badge:
+**Receiving enabled**, **Routing disabled** (the rule is off in the dashboard), or **Routing
+not configured**. Email Routing allows at most 200 rules per zone, so this caps the number
+of inboxes that can be open at once. Locally, copy `.dev.vars.example` to `.dev.vars`.
 
 ### 4. Verify
 

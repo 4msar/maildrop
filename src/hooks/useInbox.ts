@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { InboxInfo, MessageSummary } from "../../shared/api-types";
+import type { InboxInfo, MessageSummary, RoutingStatus } from "../../shared/api-types";
 import { ApiRequestError, api } from "../lib/api";
 
 const HEARTBEAT_MS = 60 * 60 * 1000; // matches HEARTBEAT_INTERVAL_MS on the server
@@ -15,6 +15,8 @@ export interface InboxState {
   error: string | null;
   refreshing: boolean;
   lastUpdated: number | null;
+  /** Email Routing rule state for this address; null until known. */
+  routing: RoutingStatus | null;
 }
 
 /**
@@ -31,13 +33,14 @@ export function useInbox(username: string) {
     error: null,
     refreshing: false,
     lastUpdated: null,
+    routing: null,
   });
   const lastHeartbeat = useRef(0);
   const alive = useRef(true);
 
   const markExpired = useCallback(() => {
     alive.current = false;
-    setState((s) => ({ ...s, status: "expired", messages: [], refreshing: false }));
+    setState((s) => ({ ...s, status: "expired", messages: [], refreshing: false, routing: null }));
   }, []);
 
   const handleError = useCallback(
@@ -66,7 +69,7 @@ export function useInbox(username: string) {
     setState((s) => ({ ...s, refreshing: true }));
     try {
       const { inbox, messages } = await api.listMessages(username);
-      setState({ status: "ready", inbox, messages, error: null, refreshing: false, lastUpdated: Date.now() });
+      setState((s) => ({ ...s, status: "ready", inbox, messages, error: null, refreshing: false, lastUpdated: Date.now() }));
     } catch (err) {
       handleError(err);
     }
@@ -82,15 +85,24 @@ export function useInbox(username: string) {
     (async () => {
       try {
         let inbox;
+        let routing: RoutingStatus | null = null;
         try {
           ({ inbox } = await api.heartbeat(username));
         } catch (err) {
           if (!(err instanceof ApiRequestError && err.isGone)) throw err;
-          ({ inbox } = await api.openInbox(username));
+          // Creating the inbox also creates its routing rule (when the server is configured to).
+          ({ inbox, routing } = await api.openInbox(username));
         }
         if (cancelled) return;
         lastHeartbeat.current = Date.now();
-        setState((s) => ({ ...s, inbox }));
+        setState((s) => ({ ...s, inbox, routing: routing ?? s.routing }));
+        if (routing === null) {
+          // Best effort: the badge simply stays hidden if this fails.
+          api.routingStatus(username).then(
+            (r) => !cancelled && setState((s) => ({ ...s, routing: r.routing })),
+            () => {},
+          );
+        }
         await refresh();
       } catch (err) {
         if (!cancelled) handleError(err);

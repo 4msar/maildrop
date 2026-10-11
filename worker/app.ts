@@ -117,8 +117,12 @@ app.post("/inboxes", bodyLimit({ maxSize: 1024, onError: (c) => fail(c, 413, "ba
     username = check.username;
   }
 
-  const inbox = await c.env.INBOX.getByName(username).initialize(username);
-  return c.json({ inbox }, 200);
+  const stub = c.env.INBOX.getByName(username);
+  const inbox = await stub.initialize(username);
+  // Creates the address's Email Routing rule when ZONE_ID and CF_TOKEN are set; otherwise
+  // the inbox is just opened and reports "not_configured".
+  const res = await stub.ensureRouting(username);
+  return c.json({ inbox, routing: res.ok ? res.routing : "not_configured" }, 200);
 });
 
 app.get("/inboxes/:username", async (c) => {
@@ -131,6 +135,12 @@ app.post("/inboxes/:username/heartbeat", async (c) => {
   const username = c.get("username");
   const res = await c.env.INBOX.getByName(username).heartbeat(username);
   return res.ok ? c.json({ inbox: res.inbox }) : failFromInbox(c, res.reason);
+});
+
+app.get("/inboxes/:username/routing", async (c) => {
+  const username = c.get("username");
+  const res = await c.env.INBOX.getByName(username).routingStatus(username);
+  return res.ok ? c.json({ routing: res.routing }) : failFromInbox(c, res.reason);
 });
 
 app.get("/inboxes/:username/messages", async (c) => {

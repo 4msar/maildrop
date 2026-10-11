@@ -61,6 +61,15 @@ export interface ApiError {
   message: string;
 }
 
+/**
+ * Email Routing rule for an inbox address.
+ * - enabled: a rule sends this address to the Worker.
+ * - disabled: the rule exists but is turned off in the dashboard.
+ * - not_configured: no rule (ZONE_ID/CF_TOKEN unset, or the rule is missing).
+ * - unknown: the Cloudflare API could not be reached.
+ */
+export type RoutingStatus = "enabled" | "disabled" | "not_configured" | "unknown";
+
 export interface ConfigResponse {
   domain: string;
   ttlHours: number;

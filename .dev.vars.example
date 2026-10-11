@@ -1,0 +1,8 @@
+# Optional: create a per-address Email Routing rule whenever an inbox is opened.
+# Both must be set, otherwise inboxes are just opened (rely on a catch-all rule instead).
+# CF_TOKEN needs "Zone > Email Routing Rules > Edit" on ZONE_ID.
+# In production: npx wrangler secret put ZONE_ID && npx wrangler secret put CF_TOKEN
+ZONE_ID=
+CF_TOKEN=
+# Worker that the rules send mail to (defaults to "maildrop").
+# EMAIL_WORKER_NAME=maildrop

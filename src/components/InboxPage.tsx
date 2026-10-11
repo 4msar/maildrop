@@ -7,6 +7,7 @@ import { CopyButton } from "./CopyButton";
 import { ClockIcon, RefreshIcon } from "./icons";
 import { MessageList } from "./MessageList";
 import { MessageView } from "./MessageView";
+import { RoutingBadge } from "./RoutingBadge";
 
 function useNow(intervalMs: number) {
   const [now, setNow] = useState(Date.now);
@@ -114,7 +115,10 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-slate-800 dark:bg-slate-900">
-        <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">Your inbox</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">Your inbox</p>
+          {inbox.routing && <RoutingBadge status={inbox.routing} />}
+        </div>
         <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="font-mono text-lg font-semibold break-all sm:text-xl">{address}</p>
           <div className="flex shrink-0 gap-2">

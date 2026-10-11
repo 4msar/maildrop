@@ -1,46 +1,61 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "maildrop",
-  "main": "worker/index.ts",
-  "compatibility_date": "2026-10-01",
-  "observability": {
-    "enabled": true
-  },
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "maildrop",
+    "main": "worker/index.ts",
+    "compatibility_date": "2026-10-01",
+    "observability": {
+        "enabled": true,
+    },
 
-  // React SPA. Only /api/* runs the Worker first; everything else is a static asset,
-  // with index.html as the fallback for client-side routes like /inbox/<name>.
-  "assets": {
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
-  },
+    // React SPA. Only /api/* runs the Worker first; everything else is a static asset,
+    // with index.html as the fallback for client-side routes like /inbox/<name>.
+    "assets": {
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*"],
+    },
 
-  // Serves the UI on the same hostname that receives mail. Remove this block to deploy
-  // to workers.dev only.
-  "routes": [{ "pattern": "maildrop.msar.me", "custom_domain": true }],
+    // Serves the UI on the same hostname that receives mail. Remove this block to deploy
+    // to workers.dev only.
+    "routes": [{ "pattern": "maildrop.msar.me", "custom_domain": true }],
 
-  "durable_objects": {
-    "bindings": [
-      { "name": "INBOX", "class_name": "InboxDurableObject" },
-      { "name": "REGISTRY", "class_name": "InboxRegistry" }
-    ]
-  },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["InboxDurableObject", "InboxRegistry"] }],
+    "durable_objects": {
+        "bindings": [
+            { "name": "INBOX", "class_name": "InboxDurableObject" },
+            { "name": "REGISTRY", "class_name": "InboxRegistry" },
+        ],
+    },
+    "migrations": [
+        {
+            "tag": "v1",
+            "new_sqlite_classes": ["InboxDurableObject", "InboxRegistry"],
+        },
+    ],
 
-  // Backup sweep for expired inboxes (alarms are the primary mechanism).
-  "triggers": {
-    "crons": ["17 * * * *"]
-  },
+    // Backup sweep for expired inboxes (alarms are the primary mechanism).
+    "triggers": {
+        "crons": ["17 * * * *"],
+    },
 
-  // Per-client-IP limits. namespace_id must be unique within your Cloudflare account.
-  "ratelimits": [
-    { "name": "API_LIMITER", "namespace_id": "71001", "simple": { "limit": 300, "period": 60 } },
-    { "name": "CREATE_LIMITER", "namespace_id": "71002", "simple": { "limit": 10, "period": 60 } }
-  ],
+    // Per-client-IP limits. namespace_id must be unique within your Cloudflare account.
+    "ratelimits": [
+        {
+            "name": "API_LIMITER",
+            "namespace_id": "71001",
+            "simple": { "limit": 300, "period": 60 },
+        },
+        {
+            "name": "CREATE_LIMITER",
+            "namespace_id": "71002",
+            "simple": { "limit": 10, "period": 60 },
+        },
+    ],
 
-  "vars": {
-    "MAIL_DOMAIN": "maildrop.msar.me",
-    "MAX_MESSAGE_BYTES": "10485760",
-    "MAX_INBOX_BYTES": "52428800",
-    "MAX_MESSAGES_PER_INBOX": "100"
-  }
+    "vars": {
+        "EMAIL_WORKER_NAME": "maildrop",
+        "MAIL_DOMAIN": "maildrop.msar.me",
+        "MAX_INBOX_BYTES": "52428800",
+        "MAX_MESSAGE_BYTES": "10485760",
+        "MAX_MESSAGES_PER_INBOX": "100",
+        "ZONE_ID": "a61ac98b3da55aa8050516583d6db507",
+    },
 }
