@@ -3,7 +3,7 @@ import type { MessageDetail } from "../../shared/api-types";
 import { ApiRequestError, api } from "../lib/api";
 import { formatBytes, formatDateTime } from "../lib/format";
 import { HtmlPreview } from "./HtmlPreview";
-import { ArrowLeftIcon, DownloadIcon, PaperclipIcon, TrashIcon } from "./icons";
+import { ArrowLeftIcon, ChevronDownIcon, DownloadIcon, PaperclipIcon, TrashIcon } from "./icons";
 
 type Tab = "html" | "text" | "headers";
 
@@ -22,6 +22,7 @@ export function MessageView({ username, messageId, onBack, onDeleted, onGone }: 
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("html");
   const [deleting, setDeleting] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     // The component is keyed by message id, so state starts fresh for each message.
@@ -63,9 +64,11 @@ export function MessageView({ username, messageId, onBack, onDeleted, onGone }: 
     <button
       type="button"
       onClick={onBack}
-      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800"
+      aria-label="Back to inbox"
+      title="Back to inbox"
+      className="inline-flex shrink-0 items-center rounded-md p-1.5 text-slate-600 hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800"
     >
-      <ArrowLeftIcon className="size-4" /> Inbox
+      <ArrowLeftIcon className="size-4" />
     </button>
   );
 
@@ -98,79 +101,111 @@ export function MessageView({ username, messageId, onBack, onDeleted, onGone }: 
 
   return (
     <article className="flex h-full flex-col">
-      <div className="border-b border-slate-200 p-4 sm:p-6 dark:border-slate-800">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <header className="border-b border-slate-200 px-3 py-2 sm:px-4 dark:border-slate-800">
+        <div className="flex items-center gap-1.5">
           {backButton}
-          <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowDetails((v) => !v)}
+            aria-expanded={showDetails}
+            aria-controls="message-details"
+            title={showDetails ? "Hide details" : "Show details"}
+            className="group flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <h2 className={`min-w-0 text-base font-semibold sm:text-lg ${showDetails ? "break-words" : "truncate"}`}>
+              {message.subject || "(no subject)"}
+            </h2>
+            {!showDetails && message.attachments.length > 0 && (
+              <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
+                <PaperclipIcon className="size-3.5" />
+                {message.attachments.length}
+              </span>
+            )}
+            <ChevronDownIcon
+              className={`size-4 shrink-0 text-slate-500 transition-transform group-hover:text-slate-800 dark:text-slate-400 dark:group-hover:text-slate-200 ${showDetails ? "rotate-180" : ""}`}
+            />
+            <span className="sr-only">{showDetails ? "Hide details" : "Show details"}</span>
+          </button>
+          <div className="flex shrink-0 gap-1.5">
             <a
               href={api.rawUrl(username, messageId)}
               download
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              title="Download .eml"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2 py-1.5 text-sm hover:bg-slate-50 sm:px-3 dark:border-slate-700 dark:hover:bg-slate-800"
             >
-              <DownloadIcon className="size-4" /> .eml
+              <DownloadIcon className="size-4" />
+              <span className="hidden sm:inline">.eml</span>
             </a>
             <button
               type="button"
               onClick={remove}
               disabled={deleting}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-slate-700 dark:text-red-400 dark:hover:bg-red-950/40"
+              aria-label="Delete message"
+              title="Delete message"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 sm:px-3 dark:border-slate-700 dark:text-red-400 dark:hover:bg-red-950/40"
             >
-              <TrashIcon className="size-4" /> {deleting ? "Deleting…" : "Delete"}
+              <TrashIcon className="size-4" />
+              <span className="hidden sm:inline">{deleting ? "Deleting…" : "Delete"}</span>
             </button>
           </div>
         </div>
-        <h2 className="text-lg font-semibold text-pretty break-words sm:text-xl">{message.subject || "(no subject)"}</h2>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
-          <dt className="text-slate-500 dark:text-slate-400">From</dt>
-          <dd className="break-all">{message.from}</dd>
-          {message.to && (
-            <>
-              <dt className="text-slate-500 dark:text-slate-400">To</dt>
-              <dd className="break-all">{message.to}</dd>
-            </>
-          )}
-          {message.cc && (
-            <>
-              <dt className="text-slate-500 dark:text-slate-400">Cc</dt>
-              <dd className="break-all">{message.cc}</dd>
-            </>
-          )}
-          <dt className="text-slate-500 dark:text-slate-400">Received</dt>
-          <dd>{formatDateTime(message.receivedAt)}</dd>
-        </dl>
+
+        {showDetails && (
+          <div id="message-details" className="px-1.5 pt-1 pb-2">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+              <dt className="text-slate-500 dark:text-slate-400">From</dt>
+              <dd className="break-all">{message.from}</dd>
+              {message.to && (
+                <>
+                  <dt className="text-slate-500 dark:text-slate-400">To</dt>
+                  <dd className="break-all">{message.to}</dd>
+                </>
+              )}
+              {message.cc && (
+                <>
+                  <dt className="text-slate-500 dark:text-slate-400">Cc</dt>
+                  <dd className="break-all">{message.cc}</dd>
+                </>
+              )}
+              <dt className="text-slate-500 dark:text-slate-400">Received</dt>
+              <dd>{formatDateTime(message.receivedAt)}</dd>
+            </dl>
+
+            {message.attachments.length > 0 && (
+              <ul className="mt-3 flex flex-wrap gap-2" aria-label="Attachments">
+                {message.attachments.map((a) => (
+                  <li key={a.index}>
+                    <a
+                      href={api.attachmentUrl(username, messageId, a.index)}
+                      download={a.filename}
+                      className="flex max-w-xs items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm hover:border-brand-500 dark:border-slate-700 dark:bg-slate-800/60"
+                    >
+                      {PREVIEWABLE_IMAGES.has(a.mimeType) ? (
+                        <img
+                          src={api.attachmentUrl(username, messageId, a.index, true)}
+                          alt=""
+                          className="size-8 rounded object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <PaperclipIcon className="size-4 shrink-0 text-slate-400" />
+                      )}
+                      <span className="truncate">{a.filename}</span>
+                      <span className="shrink-0 text-xs text-slate-500">{formatBytes(a.size)}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {message.malformed && (
-          <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <p className="mx-1.5 mt-1 mb-1 rounded-lg bg-amber-50 p-2.5 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
             This message could not be parsed. Download the .eml file to inspect it.
           </p>
         )}
-
-        {message.attachments.length > 0 && (
-          <ul className="mt-4 flex flex-wrap gap-2" aria-label="Attachments">
-            {message.attachments.map((a) => (
-              <li key={a.index}>
-                <a
-                  href={api.attachmentUrl(username, messageId, a.index)}
-                  download={a.filename}
-                  className="flex max-w-xs items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm hover:border-brand-500 dark:border-slate-700 dark:bg-slate-800/60"
-                >
-                  {PREVIEWABLE_IMAGES.has(a.mimeType) ? (
-                    <img
-                      src={api.attachmentUrl(username, messageId, a.index, true)}
-                      alt=""
-                      className="size-8 rounded object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <PaperclipIcon className="size-4 shrink-0 text-slate-400" />
-                  )}
-                  <span className="truncate">{a.filename}</span>
-                  <span className="shrink-0 text-xs text-slate-500">{formatBytes(a.size)}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      </header>
 
       <div role="tablist" className="flex gap-1 border-b border-slate-200 px-4 dark:border-slate-800">
         {tabs

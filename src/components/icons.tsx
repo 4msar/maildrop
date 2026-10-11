@@ -24,6 +24,9 @@ export const DownloadIcon = (p: P) => (
 export const PaperclipIcon = (p: P) => (
   <svg {...base} {...p}><path d="m21 11-8.6 8.6a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.6 8.6a2 2 0 0 1-2.8-2.8L15.5 7" /></svg>
 );
+export const ChevronDownIcon = (p: P) => (
+  <svg {...base} {...p}><path d="m6 9 6 6 6-6" /></svg>
+);
 export const ArrowLeftIcon = (p: P) => (
   <svg {...base} {...p}><path d="M19 12H5m6-6-6 6 6 6" /></svg>
 );
