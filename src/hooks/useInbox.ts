@@ -161,5 +161,19 @@ export function useInbox(username: string) {
     }
   }, [username]);
 
-  return { ...state, refresh, removeMessage, deleteInbox, onGone: markExpired };
+  /**
+   * Re-opens the inbox on the server, which recreates it if missing and creates its Email
+   * Routing rule if there is none. Used when routing reports "not_configured".
+   */
+  const reconfigureRouting = useCallback(async () => {
+    if (!alive.current) return;
+    try {
+      const { inbox, routing } = await api.openInbox(username);
+      setState((s) => ({ ...s, status: "ready", inbox, routing, error: null }));
+    } catch (err) {
+      handleError(err);
+    }
+  }, [username, handleError]);
+
+  return { ...state, refresh, removeMessage, deleteInbox, reconfigureRouting, onGone: markExpired };
 }

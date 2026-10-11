@@ -138,6 +138,7 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
   };
   const now = useNow(30_000);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [reconfiguring, setReconfiguring] = useState(false);
   const address = inbox.inbox?.address ?? `${username}@${domain}`;
   const alerts = useMailAlerts({
     username,
@@ -200,6 +201,22 @@ function Inbox({ username, domain, reopen }: { username: string; domain: string;
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">Your inbox</p>
           {inbox.routing && <RoutingBadge status={inbox.routing} />}
+          {inbox.routing === "not_configured" && (
+            <button
+              type="button"
+              disabled={reconfiguring}
+              onClick={async () => {
+                setReconfiguring(true);
+                await inbox.reconfigureRouting();
+                setReconfiguring(false);
+              }}
+              title="Create the Email Routing rule for this address (and the inbox, if missing)"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-600/30 ring-inset hover:bg-brand-50 disabled:opacity-60 dark:text-brand-100 dark:ring-brand-500/40 dark:hover:bg-brand-800/30"
+            >
+              <RefreshIcon className={`size-3 ${reconfiguring ? "animate-spin" : ""}`} />
+              {reconfiguring ? "Reconfiguring…" : "Reconfigure"}
+            </button>
+          )}
         </div>
         <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="font-mono text-lg font-semibold break-all sm:text-xl">{address}</p>
