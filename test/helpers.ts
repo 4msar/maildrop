@@ -3,7 +3,7 @@ import { exports } from "cloudflare:workers";
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import worker from "../worker/index";
 
-export const DOMAIN = "maildrop.msar.me";
+export const DOMAIN = "mail.example.com";
 
 export function buildEmail(opts: {
   from?: string;

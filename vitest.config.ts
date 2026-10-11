@@ -12,6 +12,7 @@ export default defineConfig({
           CREATE_LIMITER: { namespace_id: "91002", simple: { limit: 1000, period: 60 } },
         },
         bindings: {
+          MAIL_DOMAIN: "mail.example.com",
           MAX_MESSAGE_BYTES: "1048576",
           MAX_MESSAGES_PER_INBOX: "5",
           // Never call the real Cloudflare API from tests, even when .dev.vars has credentials.

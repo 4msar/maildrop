@@ -1,9 +1,17 @@
+# Copy to .dev.vars for local development. Everything here is optional.
+#
+# Domain inboxes receive mail at. Defaults to the host of SITE_URL, then the host the UI is
+# opened on (localhost in `npm run dev`).
+# MAIL_DOMAIN=mail.example.com
+# Public origin for canonical/Open Graph URLs. Defaults to the request origin.
+# SITE_URL=https://mail.example.com
+#
 # Optional: create a per-address Email Routing rule whenever an inbox is opened.
 # Both must be set, otherwise inboxes are just opened (rely on a catch-all rule instead).
 # CF_TOKEN needs "Zone > Email Routing Rules > Edit" on ZONE_ID.
 # In production: npx wrangler secret put ZONE_ID && npx wrangler secret put CF_TOKEN
-ZONE_ID=
-CF_TOKEN=
+# ZONE_ID=<your-zone-id>
+# CF_TOKEN=<your-api-token>
 # Worker that the rules send mail to (defaults to "maildrop").
 # EMAIL_WORKER_NAME=maildrop
 # Enables POST /api/admin/cleanup (deletes all inboxes and their routing rules).

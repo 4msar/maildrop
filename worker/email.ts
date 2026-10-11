@@ -1,6 +1,6 @@
 // Inbound mail: Email Routing catch-all rule -> this handler -> InboxDurableObject.
 
-import { getLimits } from "./lib/config";
+import { getLimits, mailDomain } from "./lib/config";
 import { domainOf, errorFields, log } from "./lib/log";
 import { parseRawEmail } from "./lib/mime";
 import { usernameFromRecipient } from "../shared/username";
@@ -44,7 +44,10 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
   const started = Date.now();
   const logBase = { fromDomain: domainOf(message.from), rawSize: message.rawSize };
 
-  const recipient = usernameFromRecipient(message.to, limits.domain);
+  // Without MAIL_DOMAIN/SITE_URL, accept whatever domain Email Routing delivered for: only
+  // zones whose rules point at this Worker can reach it.
+  const domain = mailDomain(env, message.to.slice(message.to.lastIndexOf("@") + 1));
+  const recipient = usernameFromRecipient(message.to, domain);
   if (!recipient || !recipient.ok) {
     log("info", "email.rejected", { ...logBase, reason: "invalid_recipient" });
     message.setReject("Mailbox does not exist");
@@ -61,7 +64,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
   const stub = env.INBOX.getByName(username);
   try {
     // Cheap existence check before buffering and parsing the body.
-    const inbox = await stub.getInbox(username);
+    const inbox = await stub.getInbox(username, domain);
     if (!inbox.ok) {
       log("info", "email.rejected", { ...logBase, reason: inbox.reason });
       message.setReject(REJECT_REASONS[inbox.reason]);

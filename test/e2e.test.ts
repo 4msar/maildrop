@@ -5,13 +5,13 @@ import { api, buildEmail, createInbox, deliver } from "./helpers";
 
 const bodyText = async (res: Response) => new TextDecoder().decode(await res.arrayBuffer());
 
-const addr = (u: string) => `${u}@maildrop.msar.me`;
+const addr = (u: string) => `${u}@mail.example.com`;
 
 describe("inbox creation", () => {
   it("creates a random inbox", async () => {
     const { res, body } = await createInbox();
     expect(res.status).toBe(200);
-    expect(body.inbox.address).toMatch(/^[a-z]+-[a-z]+-\d{4}@maildrop\.msar\.me$/);
+    expect(body.inbox.address).toMatch(/^[a-z]+-[a-z]+-\d{4}@mail\.example\.com$/);
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
@@ -113,7 +113,7 @@ describe("inbound email", () => {
 
   it("delivers +tag addresses to the base inbox", async () => {
     await createInbox("e2e-tag");
-    const msg = await deliver("e2e-tag+shop@maildrop.msar.me", buildEmail({ to: "e2e-tag+shop@maildrop.msar.me" }));
+    const msg = await deliver("e2e-tag+shop@mail.example.com", buildEmail({ to: "e2e-tag+shop@mail.example.com" }));
     expect(msg.rejected).toBeNull();
     const { messages } = await (await api("/api/inboxes/e2e-tag/messages")).json<any>();
     expect(messages).toHaveLength(1);

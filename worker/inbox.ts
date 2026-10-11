@@ -167,11 +167,11 @@ export class InboxDurableObject extends DurableObject<Env> {
     // ---------------------------------------------------------------- lifecycle
 
     /** Opens an inbox, creating its metadata when it does not exist (or has expired). */
-    async initialize(username: string): Promise<InboxInfo> {
+    async initialize(username: string, domain: string): Promise<InboxInfo> {
         await this.expireIfDue();
         const existing = this.readMeta();
         if (existing && existing.username === username)
-            return this.toInfo(existing);
+            return this.toInfo(existing, domain);
 
         const now = Date.now();
         const expiresAt = now + INBOX_TTL_MS;
@@ -194,11 +194,11 @@ export class InboxDurableObject extends DurableObject<Env> {
             // The alarm is the primary cleanup path; the registry is only a backup index.
             log("warn", "registry.track_failed", errorFields(err));
         }
-        return this.toInfo(this.readMeta()!);
+        return this.toInfo(this.readMeta()!, domain);
     }
 
     /** Records a heartbeat: lastPing = now, expiresAt = now + 24h. Never revives an expired inbox. */
-    async heartbeat(username: string): Promise<Result<{ inbox: InboxInfo }>> {
+    async heartbeat(username: string, domain: string): Promise<Result<{ inbox: InboxInfo }>> {
         if (await this.expireIfDue()) return { ok: false, reason: "expired" };
         const meta = this.readMeta();
         if (!meta || meta.username !== username)
@@ -218,7 +218,7 @@ export class InboxDurableObject extends DurableObject<Env> {
         if ((await this.ctx.storage.getAlarm()) === null) {
             await this.ctx.storage.setAlarm(expiresAt);
         }
-        return { ok: true, inbox: this.toInfo(this.readMeta()!) };
+        return { ok: true, inbox: this.toInfo(this.readMeta()!, domain) };
     }
 
     /** Alarm handler. Durable: alarms are persisted and retried by the platform. */
@@ -247,10 +247,10 @@ export class InboxDurableObject extends DurableObject<Env> {
         return { status: "active", expiresAt: meta.expires_at };
     }
 
-    async getInbox(username: string): Promise<Result<{ inbox: InboxInfo }>> {
+    async getInbox(username: string, domain: string): Promise<Result<{ inbox: InboxInfo }>> {
         const check = await this.checkActive(username);
         if (!check.ok) return check;
-        return { ok: true, inbox: this.toInfo(check.meta) };
+        return { ok: true, inbox: this.toInfo(check.meta, domain) };
     }
 
     // ---------------------------------------------------------------- email routing
@@ -261,12 +261,13 @@ export class InboxDurableObject extends DurableObject<Env> {
      */
     async ensureRouting(
         username: string,
+        domain: string,
     ): Promise<Result<{ routing: RoutingStatus }>> {
         const check = await this.checkActive(username);
         if (!check.ok) return check;
         const cfg = getRoutingConfig(this.env);
         if (!cfg) return { ok: true, routing: "not_configured" };
-        const address = this.toInfo(check.meta).address;
+        const address = this.toInfo(check.meta, domain).address;
         this.routingInFlight ??= (async (): Promise<RoutingStatus> => {
             try {
                 const storedId =
@@ -434,6 +435,7 @@ export class InboxDurableObject extends DurableObject<Env> {
 
     async listEmails(
         username: string,
+        domain: string,
     ): Promise<Result<{ inbox: InboxInfo; messages: MessageSummary[] }>> {
         const check = await this.checkActive(username);
         if (!check.ok) return check;
@@ -444,7 +446,7 @@ export class InboxDurableObject extends DurableObject<Env> {
             .toArray();
         return {
             ok: true,
-            inbox: this.toInfo(check.meta),
+            inbox: this.toInfo(check.meta, domain),
             messages: rows.map(toSummary),
         };
     }
@@ -636,10 +638,10 @@ export class InboxDurableObject extends DurableObject<Env> {
         return true;
     }
 
-    private toInfo(meta: MetaRow): InboxInfo {
+    private toInfo(meta: MetaRow, domain: string): InboxInfo {
         return {
             username: meta.username,
-            address: `${meta.username}@${getLimits(this.env).domain}`,
+            address: `${meta.username}@${domain}`,
             createdAt: meta.created_at,
             lastPing: meta.last_ping,
             expiresAt: meta.expires_at,

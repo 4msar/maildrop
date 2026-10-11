@@ -28,7 +28,6 @@ export const REGISTRY_SHARDS = 8;
 export const CRON_BATCH_PER_SHARD = 100;
 
 export interface Limits {
-  domain: string;
   maxMessageBytes: number;
   maxInboxBytes: number;
   maxMessagesPerInbox: number;
@@ -41,10 +40,35 @@ function intVar(value: string | undefined, fallback: number): number {
 
 export function getLimits(env: Env): Limits {
   return {
-    domain: (env.MAIL_DOMAIN || "maildrop.msar.me").toLowerCase(),
     // Email Routing rejects anything over 25 MiB before it reaches the Worker.
     maxMessageBytes: Math.min(intVar(env.MAX_MESSAGE_BYTES, 10 * 1024 * 1024), 25 * 1024 * 1024),
     maxInboxBytes: intVar(env.MAX_INBOX_BYTES, 50 * 1024 * 1024),
     maxMessagesPerInbox: intVar(env.MAX_MESSAGES_PER_INBOX, 100),
   };
+}
+
+/**
+ * Public origin of the site: SITE_URL when set (e.g. "https://mail.example.com"), otherwise
+ * `requestOrigin`. Used for canonical/Open Graph URLs.
+ */
+export function siteOrigin(env: Env, requestOrigin: string): string {
+  const configured = env.SITE_URL?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      // Invalid SITE_URL: fall back to the request.
+    }
+  }
+  return requestOrigin;
+}
+
+/**
+ * Domain that inboxes receive mail at: MAIL_DOMAIN, else the host of SITE_URL, else
+ * `fallbackHost` (the request's host, or the recipient's domain for inbound mail).
+ */
+export function mailDomain(env: Env, fallbackHost: string): string {
+  const configured = env.MAIL_DOMAIN?.trim();
+  if (configured) return configured.toLowerCase();
+  return new URL(siteOrigin(env, `https://${fallbackHost}`)).hostname.toLowerCase();
 }

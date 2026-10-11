@@ -3,6 +3,7 @@ import { isValidMessageId, newMessageId, parseAttachmentIndex } from "../worker/
 import { parseRawEmail, sanitizeFilename, truncateUtf8, extractAttachment } from "../worker/lib/mime";
 import { checkUsername, randomUsername, usernameFromRecipient } from "../shared/username";
 import { registryShardFor } from "../worker/registry";
+import { mailDomain, siteOrigin } from "../worker/lib/config";
 import { buildEmail } from "./helpers";
 
 describe("checkUsername", () => {
@@ -36,20 +37,20 @@ describe("checkUsername", () => {
 });
 
 describe("usernameFromRecipient", () => {
-  const d = "maildrop.msar.me";
+  const d = "mail.example.com";
   it("extracts the local part", () => {
-    expect(usernameFromRecipient("Hello@MailDrop.msar.me", d)).toEqual({ ok: true, username: "hello" });
+    expect(usernameFromRecipient("Hello@Mail.Example.com", d)).toEqual({ ok: true, username: "hello" });
   });
   it("strips +tags", () => {
-    expect(usernameFromRecipient("hello+news@maildrop.msar.me", d)).toEqual({ ok: true, username: "hello" });
+    expect(usernameFromRecipient("hello+news@mail.example.com", d)).toEqual({ ok: true, username: "hello" });
   });
   it("rejects other domains", () => {
     expect(usernameFromRecipient("hello@evil.com", d)).toBeNull();
-    expect(usernameFromRecipient("hello@sub.maildrop.msar.me", d)).toBeNull();
+    expect(usernameFromRecipient("hello@sub.mail.example.com", d)).toBeNull();
     expect(usernameFromRecipient("no-at-sign", d)).toBeNull();
   });
   it("flags reserved recipients", () => {
-    expect(usernameFromRecipient("postmaster@maildrop.msar.me", d)).toEqual({ ok: false, reason: "reserved_username" });
+    expect(usernameFromRecipient("postmaster@mail.example.com", d)).toEqual({ ok: false, reason: "reserved_username" });
   });
 });
 
@@ -93,7 +94,7 @@ describe("mime helpers", () => {
   it("parses text, html and attachments", async () => {
     const raw = new TextEncoder().encode(
       buildEmail({
-        to: "x@maildrop.msar.me",
+        to: "x@mail.example.com",
         subject: "Report",
         text: "See attached",
         attachment: { filename: "a.txt", contentType: "text/plain", content: "attachment data" },
@@ -134,5 +135,21 @@ describe("registry sharding", () => {
   it("is deterministic and bounded", () => {
     expect(registryShardFor("hello")).toBe(registryShardFor("hello"));
     expect(registryShardFor("hello")).toMatch(/^shard-[0-7]$/);
+  });
+});
+
+describe("mail domain and site origin", () => {
+  const e = (vars: Partial<Env>) => vars as Env;
+
+  it("prefers MAIL_DOMAIN, then the host of SITE_URL, then the fallback host", () => {
+    expect(mailDomain(e({ MAIL_DOMAIN: " Mail.Example.com ", SITE_URL: "https://ui.example.com" }), "x.test")).toBe("mail.example.com");
+    expect(mailDomain(e({ SITE_URL: "https://UI.example.com/app" }), "x.test")).toBe("ui.example.com");
+    expect(mailDomain(e({}), "Maildrop.Workers.dev")).toBe("maildrop.workers.dev");
+  });
+
+  it("uses SITE_URL's origin, ignoring an invalid value", () => {
+    expect(siteOrigin(e({ SITE_URL: "https://mail.example.com/some/path/" }), "http://localhost:5173")).toBe("https://mail.example.com");
+    expect(siteOrigin(e({ SITE_URL: "not a url" }), "http://localhost:5173")).toBe("http://localhost:5173");
+    expect(siteOrigin(e({}), "http://localhost:5173")).toBe("http://localhost:5173");
   });
 });

@@ -7,16 +7,19 @@
         "enabled": true,
     },
 
-    // React SPA. Only /api/* runs the Worker first; everything else is a static asset,
-    // with index.html as the fallback for client-side routes like /inbox/<name>.
+    // React SPA. /api/* and the HTML pages run the Worker first (the Worker fills in absolute
+    // canonical/Open Graph URLs); everything else is a static asset, with index.html as the
+    // fallback for client-side routes like /inbox/<name>.
     "assets": {
+        "binding": "ASSETS",
         "not_found_handling": "single-page-application",
-        "run_worker_first": ["/api/*"],
+        "run_worker_first": ["/api/*", "/", "/index.html", "/inbox/*"],
     },
 
-    // Serves the UI on the same hostname that receives mail. Remove this block to deploy
-    // to workers.dev only.
-    "routes": [{ "pattern": "maildrop.msar.me", "custom_domain": true }],
+    // With no routes the Worker is served on <name>.<your-subdomain>.workers.dev.
+    // To serve the UI on your own hostname (usually the one that receives mail), uncomment
+    // and set your host. Wrangler creates the DNS record for a custom domain.
+    // "routes": [{ "pattern": "mail.example.com", "custom_domain": true }],
 
     "durable_objects": {
         "bindings": [
@@ -51,11 +54,16 @@
     ],
 
     "vars": {
+        // Must match "name" above: per-address Email Routing rules send mail to this Worker.
         "EMAIL_WORKER_NAME": "maildrop",
-        "MAIL_DOMAIN": "maildrop.msar.me",
         "MAX_INBOX_BYTES": "52428800",
         "MAX_MESSAGE_BYTES": "10485760",
         "MAX_MESSAGES_PER_INBOX": "100",
-        "ZONE_ID": "a61ac98b3da55aa8050516583d6db507",
+        // Optional. Domain that inboxes receive mail at. Defaults to the host of SITE_URL,
+        // then the host the UI is opened on (or, for inbound mail, the recipient's domain).
+        // "MAIL_DOMAIN": "mail.example.com",
+        // Optional. Public origin for canonical/Open Graph URLs. Defaults to the request origin.
+        // "SITE_URL": "https://mail.example.com",
+        // ZONE_ID, CF_TOKEN and ADMIN_TOKEN are secrets: see .dev.vars.example.
     },
 }

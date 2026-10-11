@@ -5,11 +5,9 @@ import { InboxPage } from "./components/InboxPage";
 import { api } from "./lib/api";
 import { useRoute } from "./lib/router";
 
-const FALLBACK_DOMAIN = "maildrop.msar.me";
-
 export default function App() {
   const route = useRoute();
-  const [domain, setDomain] = useState(FALLBACK_DOMAIN);
+  const [domain, setDomain] = useState(() => window.location.hostname);
 
   useEffect(() => {
     api

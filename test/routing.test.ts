@@ -70,29 +70,29 @@ describe("routing config", () => {
 describe("routing rules", () => {
   it("creates a literal rule that sends the address to the Worker", async () => {
     const fake = fakeApi();
-    const rule = await ensureRule(cfg, "hello@maildrop.msar.me", fake.fetcher);
+    const rule = await ensureRule(cfg, "hello@mail.example.com", fake.fetcher);
     expect(rule).toEqual({ id: "r1", enabled: true });
     const post = fake.calls.find((c) => c.method === "POST")!;
     expect(post.auth).toBe("Bearer tok");
     expect(post.body).toMatchObject({
       enabled: true,
-      matchers: [{ type: "literal", field: "to", value: "hello@maildrop.msar.me" }],
+      matchers: [{ type: "literal", field: "to", value: "hello@mail.example.com" }],
       actions: [{ type: "worker", value: ["maildrop"] }],
     });
   });
 
   it("reuses an existing rule for the same address instead of creating another", async () => {
-    const others = Array.from({ length: 60 }, (_, i) => literal(`o${i}`, `other${i}@maildrop.msar.me`));
-    const fake = fakeApi([...others, literal("mine", "hello@maildrop.msar.me", false)]);
-    expect(await ensureRule(cfg, "hello@maildrop.msar.me", fake.fetcher)).toEqual({ id: "mine", enabled: false });
+    const others = Array.from({ length: 60 }, (_, i) => literal(`o${i}`, `other${i}@mail.example.com`));
+    const fake = fakeApi([...others, literal("mine", "hello@mail.example.com", false)]);
+    expect(await ensureRule(cfg, "hello@mail.example.com", fake.fetcher)).toEqual({ id: "mine", enabled: false });
     expect(fake.calls.some((c) => c.method === "POST")).toBe(false);
     expect(fake.calls.filter((c) => c.method === "GET")).toHaveLength(2); // paginated past the first 50
   });
 
   it("reads, finds and deletes rules; missing rules are not errors", async () => {
-    const fake = fakeApi([literal("a", "x@maildrop.msar.me")]);
+    const fake = fakeApi([literal("a", "x@mail.example.com")]);
     expect(await getRule(cfg, "a", fake.fetcher)).toEqual({ id: "a", enabled: true });
-    expect(await findRule(cfg, "nobody@maildrop.msar.me", fake.fetcher)).toBeNull();
+    expect(await findRule(cfg, "nobody@mail.example.com", fake.fetcher)).toBeNull();
     await deleteRule(cfg, "a", fake.fetcher);
     expect(fake.rules).toHaveLength(0);
     expect(await getRule(cfg, "a", fake.fetcher)).toBeNull();
@@ -101,7 +101,7 @@ describe("routing rules", () => {
 
   it("surfaces API failures", async () => {
     const fetcher = (async () => Response.json({ success: false, errors: [{ code: 10000, message: "Authentication error" }] }, { status: 403 })) as unknown as typeof fetch;
-    await expect(ensureRule(cfg, "a@maildrop.msar.me", fetcher)).rejects.toThrow(/Authentication error/);
+    await expect(ensureRule(cfg, "a@mail.example.com", fetcher)).rejects.toThrow(/Authentication error/);
   });
 });
 

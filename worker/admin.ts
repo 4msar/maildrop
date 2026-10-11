@@ -1,11 +1,11 @@
 // Manually triggered cleanup (POST /api/admin/cleanup). Deletes every literal Email Routing
-// rule for an inbox address at MAIL_DOMAIN and every inbox: those in the registry and those
+// rule for an inbox address at the mail domain and every inbox: those in the registry and those
 // named by a rule. Rules for reserved names (postmaster@, abuse@, ...) are never touched.
 //
 // Work is done in batches of `limit` so one request stays under the Workers subrequest
 // limit; the response says whether anything is left, so call it again until `done` is true.
 
-import { REGISTRY_SHARDS, getLimits } from "./lib/config";
+import { REGISTRY_SHARDS } from "./lib/config";
 import { errorFields, log } from "./lib/log";
 import { deleteRule, getRoutingConfig, listDomainRules } from "./lib/routing";
 import { registryShardFor } from "./registry";
@@ -30,8 +30,8 @@ async function inBatches<T>(items: T[], fn: (item: T) => Promise<void>): Promise
   }
 }
 
-export async function runAdminCleanup(env: Env, opts: { dryRun: boolean; limit: number }): Promise<CleanupReport> {
-  const { domain } = getLimits(env);
+export async function runAdminCleanup(env: Env, opts: { dryRun: boolean; limit: number; domain: string }): Promise<CleanupReport> {
+  const { domain } = opts;
   const cfg = getRoutingConfig(env);
 
   // Rules: only literal addresses whose local part is a valid, non-reserved inbox name.

@@ -27,7 +27,7 @@ describe("admin cleanup", () => {
 
   it("dry run lists inboxes without deleting them, then cleanup wipes them in batches", async () => {
     for (const u of ["wipe-a", "wipe-b", "wipe-c"]) await createInbox(u);
-    await deliver("wipe-a@maildrop.msar.me", buildEmail({ to: "wipe-a@maildrop.msar.me" }));
+    await deliver("wipe-a@mail.example.com", buildEmail({ to: "wipe-a@mail.example.com" }));
 
     const dry = (await (await cleanup("?dry_run=1")).json()) as any;
     expect(dry).toMatchObject({ dryRun: true, routingConfigured: false, done: true });
@@ -46,7 +46,7 @@ describe("admin cleanup", () => {
     for (const u of ["wipe-a", "wipe-b", "wipe-c"]) {
       expect((await api(`/api/inboxes/${u}/messages`)).status).toBe(404);
     }
-    expect((await deliver("wipe-a@maildrop.msar.me", buildEmail({ to: "wipe-a@maildrop.msar.me" }))).rejected).not.toBeNull();
+    expect((await deliver("wipe-a@mail.example.com", buildEmail({ to: "wipe-a@mail.example.com" }))).rejected).not.toBeNull();
 
     const empty = (await (await cleanup()).json()) as any;
     expect(empty).toMatchObject({ done: true, inboxes: { found: 0 } });
@@ -62,17 +62,17 @@ describe("listDomainRules", () => {
       matchers: [{ type, field: "to", ...(value ? { value } : {}) }],
     });
     const result = [
-      rule("1", "literal", "Hello@Maildrop.msar.me"),
-      rule("2", "literal", "someone@msar.me"),
-      rule("3", "literal", "x@notmaildrop.msar.me"),
+      rule("1", "literal", "Hello@Mail.example.com"),
+      rule("2", "literal", "someone@example.com"),
+      rule("3", "literal", "x@notmail.example.com"),
       rule("4", "all"),
-      rule("5", "literal", "postmaster@maildrop.msar.me"),
+      rule("5", "literal", "postmaster@mail.example.com"),
     ];
     const fetcher = (async () =>
       Response.json({ success: true, result, result_info: { page: 1, per_page: 50, total_count: result.length } })) as unknown as typeof fetch;
-    expect(await listDomainRules(cfg, "maildrop.msar.me", fetcher)).toEqual([
-      { id: "1", enabled: true, address: "hello@maildrop.msar.me" },
-      { id: "5", enabled: true, address: "postmaster@maildrop.msar.me" },
+    expect(await listDomainRules(cfg, "mail.example.com", fetcher)).toEqual([
+      { id: "1", enabled: true, address: "hello@mail.example.com" },
+      { id: "5", enabled: true, address: "postmaster@mail.example.com" },
     ]);
   });
 });

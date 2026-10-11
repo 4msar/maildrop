@@ -4,7 +4,7 @@
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { ApiError, ApiErrorCode, ConfigResponse } from "../shared/api-types";
-import { HEARTBEAT_INTERVAL_MS, INBOX_TTL_MS, getLimits } from "./lib/config";
+import { HEARTBEAT_INTERVAL_MS, INBOX_TTL_MS, getLimits, mailDomain } from "./lib/config";
 import { isValidMessageId, parseAttachmentIndex } from "./lib/ids";
 import { errorFields, log } from "./lib/log";
 import { extractAttachment } from "./lib/mime";
@@ -26,6 +26,11 @@ function failFromInbox(c: Context<AppEnv>, reason: InboxFailure) {
   if (reason === "expired") return fail(c, 410, "inbox_expired", "This inbox has expired.");
   if (reason === "not_found") return fail(c, 404, "not_found", "Not found.");
   return fail(c, 500, "internal_error", "Something went wrong.");
+}
+
+/** Mail domain for this request (MAIL_DOMAIN, SITE_URL's host, or the request's host). */
+function domainFor(c: Context<AppEnv>): string {
+  return mailDomain(c.env, new URL(c.req.url).hostname);
 }
 
 function clientKey(c: Context<AppEnv>): string {
@@ -79,7 +84,7 @@ app.get("/health", (c) => c.json({ ok: true }));
 app.get("/config", (c) => {
   const limits = getLimits(c.env);
   return c.json<ConfigResponse>({
-    domain: limits.domain,
+    domain: domainFor(c),
     ttlHours: INBOX_TTL_MS / 3_600_000,
     heartbeatIntervalMinutes: HEARTBEAT_INTERVAL_MS / 60_000,
     maxMessageBytes: limits.maxMessageBytes,
@@ -119,22 +124,22 @@ app.post("/inboxes", bodyLimit({ maxSize: 1024, onError: (c) => fail(c, 413, "ba
   }
 
   const stub = c.env.INBOX.getByName(username);
-  const inbox = await stub.initialize(username);
+  const inbox = await stub.initialize(username, domainFor(c));
   // Creates the address's Email Routing rule when ZONE_ID and CF_TOKEN are set; otherwise
   // the inbox is just opened and reports "not_configured".
-  const res = await stub.ensureRouting(username);
+  const res = await stub.ensureRouting(username, domainFor(c));
   return c.json({ inbox, routing: res.ok ? res.routing : "not_configured" }, 200);
 });
 
 app.get("/inboxes/:username", async (c) => {
   const username = c.get("username");
-  const res = await c.env.INBOX.getByName(username).getInbox(username);
+  const res = await c.env.INBOX.getByName(username).getInbox(username, domainFor(c));
   return res.ok ? c.json({ inbox: res.inbox }) : failFromInbox(c, res.reason);
 });
 
 app.post("/inboxes/:username/heartbeat", async (c) => {
   const username = c.get("username");
-  const res = await c.env.INBOX.getByName(username).heartbeat(username);
+  const res = await c.env.INBOX.getByName(username).heartbeat(username, domainFor(c));
   return res.ok ? c.json({ inbox: res.inbox }) : failFromInbox(c, res.reason);
 });
 
@@ -153,7 +158,7 @@ app.get("/inboxes/:username/routing", async (c) => {
 
 app.get("/inboxes/:username/messages", async (c) => {
   const username = c.get("username");
-  const res = await c.env.INBOX.getByName(username).listEmails(username);
+  const res = await c.env.INBOX.getByName(username).listEmails(username, domainFor(c));
   return res.ok ? c.json({ inbox: res.inbox, messages: res.messages }) : failFromInbox(c, res.reason);
 });
 
@@ -184,7 +189,7 @@ async function tokenMatches(given: string, expected: string): Promise<boolean> {
 }
 
 /**
- * Admin: delete every inbox and every literal routing rule for MAIL_DOMAIN.
+ * Admin: delete every inbox and every literal routing rule for the mail domain.
  * Requires `Authorization: Bearer <ADMIN_TOKEN>`; returns 404 when ADMIN_TOKEN is unset.
  * `?dry_run=1` only reports what would be deleted. `?limit=N` (1-500, default 40) caps the
  * rules and inboxes handled per call; repeat until the response has `"done": true`.
@@ -202,7 +207,7 @@ app.post("/admin/cleanup", async (c) => {
   }
   const dryRun = ["1", "true"].includes(c.req.query("dry_run") ?? "");
   try {
-    return c.json(await runAdminCleanup(c.env, { dryRun, limit }));
+    return c.json(await runAdminCleanup(c.env, { dryRun, limit, domain: domainFor(c) }));
   } catch (err) {
     log("error", "admin.cleanup_failed", errorFields(err));
     return fail(c, 500, "internal_error", err instanceof Error ? err.message : "Cleanup failed.");
