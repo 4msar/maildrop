@@ -19,6 +19,8 @@ export default defineConfig({
           ZONE_ID: "",
           CF_TOKEN: "",
           ADMIN_TOKEN: "test-admin-token",
+          ORPHANED_EMAIL_ACTION: "reject",
+          FORWARD_TO: "",
         },
       },
     }),

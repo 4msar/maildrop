@@ -3,8 +3,9 @@ import { isValidMessageId, newMessageId, parseAttachmentIndex } from "../worker/
 import { parseRawEmail, sanitizeFilename, truncateUtf8, extractAttachment } from "../worker/lib/mime";
 import { checkUsername, randomUsername, usernameFromRecipient } from "../shared/username";
 import { registryShardFor } from "../worker/registry";
-import { mailDomain, siteOrigin } from "../worker/lib/config";
-import { buildEmail } from "./helpers";
+import { forwardAddresses, mailDomain, orphanedEmailAction, siteOrigin } from "../worker/lib/config";
+import { handleOrphanedEmail } from "../worker/email";
+import { buildEmail, fakeEmailMessage } from "./helpers";
 
 describe("checkUsername", () => {
   it.each(["hello", "john.doe", "a_b-c", "abc", "x1y2z3", "a".repeat(32)])("accepts %s", (name) => {
@@ -151,5 +152,52 @@ describe("mail domain and site origin", () => {
     expect(siteOrigin(e({ SITE_URL: "https://mail.example.com/some/path/" }), "http://localhost:5173")).toBe("https://mail.example.com");
     expect(siteOrigin(e({ SITE_URL: "not a url" }), "http://localhost:5173")).toBe("http://localhost:5173");
     expect(siteOrigin(e({}), "http://localhost:5173")).toBe("http://localhost:5173");
+  });
+});
+
+describe("orphaned email", () => {
+  const e = (vars: Record<string, string>) => vars as unknown as Env;
+  const orphan = (forward?: (to: string) => Promise<void>) => {
+    const msg = fakeEmailMessage("sender@example.com", "someone@other.example", "raw");
+    if (forward) msg.forward = forward as unknown as typeof msg.forward;
+    return msg;
+  };
+
+  it("parses the action and forward addresses", () => {
+    expect(orphanedEmailAction(e({ ORPHANED_EMAIL_ACTION: " Forward " }))).toBe("forward");
+    expect(orphanedEmailAction(e({ ORPHANED_EMAIL_ACTION: "bogus" }))).toBe("reject");
+    expect(orphanedEmailAction(e({}))).toBe("reject");
+    expect(forwardAddresses(e({ FORWARD_TO: " A@x.com, ,b@y.com " }))).toEqual(["a@x.com", "b@y.com"]);
+    expect(forwardAddresses(e({}))).toEqual([]);
+  });
+
+  it("rejects, or drops by accepting silently", async () => {
+    const rejected = orphan();
+    await handleOrphanedEmail(rejected, e({ ORPHANED_EMAIL_ACTION: "reject" }));
+    expect(rejected.rejected).toBe("Mailbox does not exist");
+
+    const dropped = orphan(async () => { throw new Error("must not forward"); });
+    await handleOrphanedEmail(dropped, e({ ORPHANED_EMAIL_ACTION: "drop", FORWARD_TO: "a@x.com" }));
+    expect(dropped.rejected).toBeNull();
+  });
+
+  it("forwards to every address, rejecting only when none succeed", async () => {
+    const sent: string[] = [];
+    const ok = orphan(async (to) => { sent.push(to); });
+    await handleOrphanedEmail(ok, e({ ORPHANED_EMAIL_ACTION: "forward", FORWARD_TO: "a@x.com,b@y.com" }));
+    expect(sent).toEqual(["a@x.com", "b@y.com"]);
+    expect(ok.rejected).toBeNull();
+
+    const partial = orphan(async (to) => { if (to === "a@x.com") throw new Error("unverified"); });
+    await handleOrphanedEmail(partial, e({ ORPHANED_EMAIL_ACTION: "forward", FORWARD_TO: "a@x.com,b@y.com" }));
+    expect(partial.rejected).toBeNull();
+
+    const failed = orphan(async () => { throw new Error("unverified"); });
+    await handleOrphanedEmail(failed, e({ ORPHANED_EMAIL_ACTION: "forward", FORWARD_TO: "a@x.com" }));
+    expect(failed.rejected).not.toBeNull();
+
+    const unconfigured = orphan();
+    await handleOrphanedEmail(unconfigured, e({ ORPHANED_EMAIL_ACTION: "forward" }));
+    expect(unconfigured.rejected).toBe("Mailbox does not exist");
   });
 });

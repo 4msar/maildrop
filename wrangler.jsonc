@@ -20,6 +20,8 @@
     // To serve the UI on your own hostname (usually the one that receives mail), uncomment
     // and set your host. Wrangler creates the DNS record for a custom domain.
     // "routes": [{ "pattern": "mail.example.com", "custom_domain": true }],
+    // To catch all mail for a domain, set up Email Routing in Cloudflare and add a rule to send mail to the Worker.
+    // "addresses": ["*@yourdomain.com"],
 
     "durable_objects": {
         "bindings": [
@@ -65,5 +67,9 @@
         // Optional. Public origin for canonical/Open Graph URLs. Defaults to the request origin.
         // "SITE_URL": "https://mail.example.com",
         // ZONE_ID, CF_TOKEN and ADMIN_TOKEN are secrets: see .dev.vars.example.
+        // Mail for any other domain: "reject", "forward" (to FORWARD_TO) or "drop".
+        "ORPHANED_EMAIL_ACTION": "forward",
+        // Comma-separated, verified Email Routing destination addresses for "forward".
+        // "FORWARD_TO": "me@example.com",
     },
 }

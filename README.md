@@ -150,8 +150,9 @@ opened is rejected without creating any storage.
 1. The Email Routing catch-all rule sends every message for the domain to the Worker's
    `email()` handler.
 2. The handler parses the envelope recipient (`message.to`). It rejects invalid or reserved
-   usernames, and delivers `name+tag@` to `name`. When `MAIL_DOMAIN` (or `SITE_URL`) is set it
-   also rejects other domains; when neither is set it accepts any domain Email Routing hands
+   usernames, and delivers `name+tag@` to `name`. When `MAIL_DOMAIN` (or `SITE_URL`) is set, mail
+   for any other domain is orphaned and handled per `ORPHANED_EMAIL_ACTION` (reject, forward to
+   `FORWARD_TO`, or drop); when neither is set it accepts any domain Email Routing hands
    it, since only zones whose rules point at this Worker can reach it.
 3. It rejects early when `message.rawSize` exceeds `MAX_MESSAGE_BYTES` (default 10 MiB;
    Email Routing itself rejects anything over 25 MiB). The stream is also capped while it is
@@ -301,7 +302,7 @@ Tests run inside the real Workers runtime through `@cloudflare/vitest-plugin`, w
   "not configured" path.
 - **Admin** (`admin.test.ts`): token checks, `limit` validation, dry run, batched wiping.
 
-`vitest.config.ts` sets `MAIL_DOMAIN=mail.example.com` and blanks `ZONE_ID` and `CF_TOKEN`, so
+`vitest.config.ts` sets `MAIL_DOMAIN=mail.example.com` and `ORPHANED_EMAIL_ACTION=reject`, and blanks `ZONE_ID` and `CF_TOKEN`, so
 tests never call the real Cloudflare API even when `.dev.vars` holds real credentials.
 
 The browser UI is not covered by automated tests. It was checked manually against `npm run dev`.
@@ -322,6 +323,8 @@ Locally, put any of them in `.dev.vars` (copy `.dev.vars.example`).
 | `MAX_MESSAGES_PER_INBOX` | var    | `100`                                                       | Message quota per inbox.                                                                                                 |
 | `ZONE_ID`, `CF_TOKEN`    | secret | unset (off)                                                 | Create a per-address Email Routing rule for each inbox. See [step 4b](#4b-optional-per-address-routing-rules-needed-on-a-subdomain). |
 | `ADMIN_TOKEN`            | secret | unset (off)                                                 | Enables `POST /api/admin/cleanup`. See [Manual cleanup](#manual-cleanup).                                                |
+| `ORPHANED_EMAIL_ACTION`  | var    | `reject` (`wrangler.jsonc` sets `drop`)                     | What to do with mail for a domain other than `MAIL_DOMAIN`: `reject`, `forward` or `drop`.                               |
+| `FORWARD_TO`             | var    | unset                                                       | Comma-separated addresses for `forward`. Each must be a verified Email Routing destination; with none, mail is rejected. |
 
 `wrangler deploy` replaces the Worker's plain vars with the ones in `wrangler.jsonc`, so a var
 set only in the dashboard is removed on the next deploy. Keep it in `wrangler.jsonc`, pass it

@@ -17,3 +17,10 @@
 # Enables POST /api/admin/cleanup (deletes all inboxes and their routing rules).
 # Use a long random value, e.g. `openssl rand -hex 32`. The route returns 404 when unset.
 # ADMIN_TOKEN=
+#
+# Mail for a domain other than MAIL_DOMAIN (or the host of SITE_URL) is "orphaned".
+# ORPHANED_EMAIL_ACTION is one of reject (default), forward or drop.
+# ORPHANED_EMAIL_ACTION=drop
+# With forward: comma-separated addresses, each a verified Email Routing destination.
+# Orphaned mail is rejected when none is set.
+# FORWARD_TO=me@example.com,ops@example.com

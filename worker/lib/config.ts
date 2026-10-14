@@ -28,23 +28,26 @@ export const REGISTRY_SHARDS = 8;
 export const CRON_BATCH_PER_SHARD = 100;
 
 export interface Limits {
-  maxMessageBytes: number;
-  maxInboxBytes: number;
-  maxMessagesPerInbox: number;
+    maxMessageBytes: number;
+    maxInboxBytes: number;
+    maxMessagesPerInbox: number;
 }
 
 function intVar(value: string | undefined, fallback: number): number {
-  const n = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+    const n = Number.parseInt(value ?? "", 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 export function getLimits(env: Env): Limits {
-  return {
-    // Email Routing rejects anything over 25 MiB before it reaches the Worker.
-    maxMessageBytes: Math.min(intVar(env.MAX_MESSAGE_BYTES, 10 * 1024 * 1024), 25 * 1024 * 1024),
-    maxInboxBytes: intVar(env.MAX_INBOX_BYTES, 50 * 1024 * 1024),
-    maxMessagesPerInbox: intVar(env.MAX_MESSAGES_PER_INBOX, 100),
-  };
+    return {
+        // Email Routing rejects anything over 25 MiB before it reaches the Worker.
+        maxMessageBytes: Math.min(
+            intVar(env.MAX_MESSAGE_BYTES, 10 * 1024 * 1024),
+            25 * 1024 * 1024,
+        ),
+        maxInboxBytes: intVar(env.MAX_INBOX_BYTES, 50 * 1024 * 1024),
+        maxMessagesPerInbox: intVar(env.MAX_MESSAGES_PER_INBOX, 100),
+    };
 }
 
 /**
@@ -52,15 +55,15 @@ export function getLimits(env: Env): Limits {
  * `requestOrigin`. Used for canonical/Open Graph URLs.
  */
 export function siteOrigin(env: Env, requestOrigin: string): string {
-  const configured = env.SITE_URL?.trim();
-  if (configured) {
-    try {
-      return new URL(configured).origin;
-    } catch {
-      // Invalid SITE_URL: fall back to the request.
+    const configured = env.SITE_URL?.trim();
+    if (configured) {
+        try {
+            return new URL(configured).origin;
+        } catch {
+            // Invalid SITE_URL: fall back to the request.
+        }
     }
-  }
-  return requestOrigin;
+    return requestOrigin;
 }
 
 /**
@@ -68,7 +71,28 @@ export function siteOrigin(env: Env, requestOrigin: string): string {
  * `fallbackHost` (the request's host, or the recipient's domain for inbound mail).
  */
 export function mailDomain(env: Env, fallbackHost: string): string {
-  const configured = env.MAIL_DOMAIN?.trim();
-  if (configured) return configured.toLowerCase();
-  return new URL(siteOrigin(env, `https://${fallbackHost}`)).hostname.toLowerCase();
+    const configured = env.MAIL_DOMAIN?.trim();
+    if (configured) return configured.toLowerCase();
+    return new URL(
+        siteOrigin(env, `https://${fallbackHost}`),
+    ).hostname.toLowerCase();
+}
+
+export type OrphanedEmailAction = "reject" | "forward" | "drop";
+
+/** What to do with mail addressed to a domain other than the mail domain. Defaults to "reject". */
+export function orphanedEmailAction(env: Env): OrphanedEmailAction {
+    const action = env.ORPHANED_EMAIL_ACTION?.trim().toLowerCase();
+    if (action === "reject" || action === "forward" || action === "drop") {
+        return action;
+    }
+    return "reject";
+}
+
+/** Verified Email Routing destination addresses that orphaned mail is forwarded to. */
+export function forwardAddresses(env: Env): string[] {
+    return (env.FORWARD_TO ?? "")
+        .split(",")
+        .map((a) => a.trim().toLowerCase())
+        .filter(Boolean);
 }
